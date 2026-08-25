@@ -665,6 +665,43 @@ enabled via `git config core.hooksPath .githooks`.
 held no credentials, but the ignore rules are now matched with and without the dot. Always list what
 is actually staged before a first commit, and verify the REMOTE file list after pushing.
 
+### 2026-08-25 — Sparse-station bug (user-reported), default moved to farmland
+
+**The bug: "many places keep showing 1 inch of rain".** Reported from the live site. The API data
+was fine — the fault was in `makeStat`.
+
+An accumulation sums only the days that reported. Airport stations drop days routinely. Measured
+across Texas for 2026:
+
+| Place | Days with rain data | Season total shown |
+|---|---|---|
+| Lubbock | 236 / 237 | 8.65 in (correct) |
+| **Muleshoe** | **173 / 237** | **1.81 in** ← the reported "1 inch" |
+| **Pecos** | **23 / 237** | 4.5 in |
+| Uvalde | 208 / 237 | 11.65 in |
+
+That partial total was then compared against a **complete** 25-year normal and rendered as
+"−13.2 vs normal" — a fabricated catastrophic drought, stated with total confidence. Note Muleshoe
+lost ~80% of its rainfall from only ~27% missing days: **rain arrives on a few days, so missing days
+hide a disproportionate share of the total.** Temperature degrades gracefully; rainfall does not.
+
+**Fix:** `makeStat` counts days actually present between `startIdx` and the read index and returns
+`coverage`/`daysPresent`/`daysExpected`/`sparse`. Below 90% the tiles **drop the vs-normal
+comparison** and say "incomplete — only 173 of 194 days reported" instead. The total is still shown
+because it is honestly what the station measured; the COMPARISON was the lie.
+
+Threshold tuned to 0.9 deliberately: 0.95 flagged an ordinary 90/96-day window on good data, and a
+warning that cries wolf gets ignored when it matters.
+
+**THE GENERAL RULE, now hit three times (chart, tiles, and this):** anywhere a partial series is
+summed and compared against a complete baseline, the comparison must be gated on coverage. Assume
+any new accumulation surface needs this.
+
+**Default location moved off Waco city centre** to Blackland Prairie cropland (31.30, −97.40),
+exported as `DEFAULT_PLACE` in `lib/geo.ts`. City pixels read roughly a third of cropland ET
+(355 mm vs 926 mm in 2024), so landing a first-time visitor on pavement made their first impression
+of the water figures wrong with no way to know it.
+
 ## Next up
 
 Roughly in value order:

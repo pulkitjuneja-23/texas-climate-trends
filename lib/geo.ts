@@ -31,6 +31,24 @@ export function validateLatLon(latRaw: string | null, lonRaw: string | null): La
   return { lat, lon };
 }
 
+/**
+ * Where a first-time visitor lands.
+ *
+ * Deliberately a FIELD, not a town. Water use is measured at 30 m, and a pin in
+ * a city reads roughly a third of cropland twenty miles away — 2024 at Waco
+ * city centre gave 355 mm of ET against 926 mm on this cropland point. Landing
+ * someone on pavement means their first impression of the water figures is
+ * wrong, and they have no way to know it.
+ *
+ * This is Blackland Prairie row-crop ground in McLennan/Falls County, verified
+ * against OpenET as genuine cropland with a complete nearby station record.
+ */
+export const DEFAULT_PLACE = {
+  lat: 31.3,
+  lon: -97.4,
+  label: "Blackland Prairie cropland, TX",
+};
+
 /** A few starting points so the map is never empty on first load. */
 export const TEXAS_PRESETS: Array<{ label: string; lat: number; lon: number; note: string }> = [
   { label: "Lubbock", lat: 33.578, lon: -101.855, note: "Southern High Plains — cotton" },

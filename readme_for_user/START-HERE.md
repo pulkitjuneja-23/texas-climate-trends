@@ -78,6 +78,17 @@ anywhere on the page without scrolling back up. **gridMET (4 km)** is the defaul
 | **Airport stations** | a single point | current | Real instrument readings, not a model |
 | **NASA POWER** | 55 km | 5 days behind | Very coarse; whole-region trends |
 
+**If a box says "incomplete — only 173 of 194 days reported"**, the weather station skipped days,
+so the total underneath it is missing whatever fell on the days it missed. The page shows the total
+(it is genuinely what the station recorded) but **deliberately hides the "vs normal" comparison**,
+because comparing a part-year against a full-year average invents a drought that isn't there.
+
+This matters most for rainfall. Rain arrives on a handful of days, so a station missing a quarter of
+the year can easily miss most of the rain — one Texas station showed 1.8 inches when the true figure
+was nearer 8. Temperature suffers far less, because one missing day barely shifts an average.
+
+If you see it, switch to **gridMET** or **Daymet**, which have no missing days.
+
 **A warning about Airport stations.** It is the only real rain gauge here, which makes it valuable —
 but a station can go down for weeks or months. When that happens the year-by-year chart will leave
 those years out and **tell you which ones**, e.g. *"4 years not shown (2019, 2020, 2024, 2025) — the

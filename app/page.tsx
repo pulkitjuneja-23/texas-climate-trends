@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DailyRecord, Place, SourceMeta, TaggedRecord } from "@/lib/types";
 import { DEFAULT_SOURCE_ID } from "@/lib/sources/registry";
-import { TEXAS_PRESETS } from "@/lib/geo";
+import { DEFAULT_PLACE } from "@/lib/geo";
 import { GDD_PRESETS } from "@/lib/agro/gdd";
 import {
   alignByYear,
@@ -104,11 +104,7 @@ function readUrlDefaults(): {
 }
 
 export default function Page() {
-  const [place, setPlace] = useState<Place>({
-    lat: TEXAS_PRESETS[2].lat,
-    lon: TEXAS_PRESETS[2].lon,
-    label: "Waco, TX",
-  });
+  const [place, setPlace] = useState<Place>({ ...DEFAULT_PLACE });
   const [sourceId, setSourceId] = useState(DEFAULT_SOURCE_ID);
   /** Blocks the data fetch until any URL overrides have been applied, so a
    *  shared link does not fire a throwaway request for the default location. */
@@ -375,6 +371,29 @@ export default function Page() {
       const value = accum[idx];
       if (value === null || !Number.isFinite(value)) return null;
 
+      /**
+       * COVERAGE GUARD — the reason a season total can be badly wrong.
+       *
+       * An accumulation sums only the days that reported. Airport stations drop
+       * days routinely: measured 2026 at Muleshoe 173/237 days, Pecos 23/237.
+       * Summing those gives 1.81 in and 4.5 in, which then get compared against
+       * a COMPLETE 25-year normal and render as "-13.2 vs normal" — a fake
+       * catastrophic drought, stated with total confidence.
+       *
+       * The total itself is honest (it is what the station measured); the
+       * COMPARISON is what lies. So count the days actually present and let the
+       * tile drop the vs-normal line and say what is missing instead.
+       */
+      let present = 0;
+      let span = 0;
+      for (let i = startIdx; i <= idx; i++) {
+        span++;
+        const v = cur.values[i];
+        if (v !== null && Number.isFinite(v)) present++;
+      }
+      // 02-29 is legitimately absent in non-leap years, so allow a little slack.
+      const coverage = span > 0 ? present / span : 0;
+
       // Compare against years that actually have a complete record, or the
       // "normal" is an average of half-finished seasons.
       const normBase = isMonthlySource
@@ -390,7 +409,29 @@ export default function Page() {
       const norm = accumClimatology(normBase, startIdx, maxGap)[idx];
       if (!norm || norm.mean === null) return null;
 
-      return { value, normal: norm.mean, throughIdx: idx, stale: idx < endIdx };
+      return {
+        value,
+        normal: norm.mean,
+        throughIdx: idx,
+        stale: idx < endIdx,
+        coverage,
+        daysPresent: present,
+        daysExpected: span,
+        /**
+         * Threshold set at 90%, not higher, on purpose.
+         *
+         * Too strict and ordinary small gaps (a handful of days out of a
+         * hundred) get reported like a fault, which trains the reader to ignore
+         * the warning — and then it fails when it matters. Too loose and the
+         * genuinely broken cases slip through. 90% catches the real ones
+         * measured in Texas: Pecos at 10% coverage, Muleshoe at 89%.
+         *
+         * Note this is harsher on rainfall than on temperature by nature:
+         * rain arrives on a few days, so missing days can hide most of the
+         * total, while a missing temperature day barely moves an average.
+         */
+        sparse: coverage < 0.9,
+      };
     },
     [records, history?.lastObserved, gddConfig, currentYear]
   );
@@ -551,24 +592,32 @@ export default function Page() {
                         {unitLabel("precip", units)}
                       </span>
                     </div>
-                    {rainStat && (
-                      <div
-                        className="d"
-                        style={{
-                          color:
-                            rainStat.value < rainStat.normal
-                              ? "var(--div-warm)"
-                              : "var(--div-cool)",
-                          fontWeight: 600,
-                        }}
-                      >
-                        {rainStat.value >= rainStat.normal ? "+" : ""}
-                        {convert(rainStat.value - rainStat.normal, "precip", units).toFixed(
-                          precipDp
-                        )}{" "}
-                        vs normal
-                      </div>
-                    )}
+                    {/* A vs-normal comparison is only shown when the record is
+                        complete enough to support it. See the coverage guard. */}
+                    {rainStat &&
+                      (rainStat.sparse ? (
+                        <div className="d" style={{ color: "var(--div-warm)", fontWeight: 600 }}>
+                          incomplete — only {rainStat.daysPresent} of{" "}
+                          {rainStat.daysExpected} days reported
+                        </div>
+                      ) : (
+                        <div
+                          className="d"
+                          style={{
+                            color:
+                              rainStat.value < rainStat.normal
+                                ? "var(--div-warm)"
+                                : "var(--div-cool)",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {rainStat.value >= rainStat.normal ? "+" : ""}
+                          {convert(rainStat.value - rainStat.normal, "precip", units).toFixed(
+                            precipDp
+                          )}{" "}
+                          vs normal
+                        </div>
+                      ))}
                     <div className="since-row">
                       <input
                         type="date"
@@ -588,24 +637,30 @@ export default function Page() {
                         ? Math.round(convert(gddStat.value, "gdd", units)).toLocaleString()
                         : "—"}
                     </div>
-                    {gddStat && (
-                      <div
-                        className="d"
-                        style={{
-                          color:
-                            gddStat.value >= gddStat.normal
-                              ? "var(--div-warm)"
-                              : "var(--div-cool)",
-                          fontWeight: 600,
-                        }}
-                      >
-                        {gddStat.value >= gddStat.normal ? "+" : ""}
-                        {Math.round(
-                          convert(gddStat.value - gddStat.normal, "gdd", units)
-                        ).toLocaleString()}{" "}
-                        vs normal
-                      </div>
-                    )}
+                    {gddStat &&
+                      (gddStat.sparse ? (
+                        <div className="d" style={{ color: "var(--div-warm)", fontWeight: 600 }}>
+                          incomplete — only {gddStat.daysPresent} of {gddStat.daysExpected} days
+                          reported
+                        </div>
+                      ) : (
+                        <div
+                          className="d"
+                          style={{
+                            color:
+                              gddStat.value >= gddStat.normal
+                                ? "var(--div-warm)"
+                                : "var(--div-cool)",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {gddStat.value >= gddStat.normal ? "+" : ""}
+                          {Math.round(
+                            convert(gddStat.value - gddStat.normal, "gdd", units)
+                          ).toLocaleString()}{" "}
+                          vs normal
+                        </div>
+                      ))}
                     <div className="since-row">
                       <input
                         type="date"
@@ -696,7 +751,11 @@ export default function Page() {
                       )}
                     </div>
                     <div className="d muted">
-                      {balanceStat ? balanceWording(balanceStat.value).long : "rain minus ET"}
+                      {balanceStat
+                        ? balanceStat.sparse
+                          ? `incomplete — only ${balanceStat.daysPresent} of ${balanceStat.daysExpected} days reported`
+                          : balanceWording(balanceStat.value).long
+                        : "rain minus ET"}
                     </div>
                     {/*
                       "vs <source> rain" was dropped: the card header already
