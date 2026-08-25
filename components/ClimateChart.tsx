@@ -474,7 +474,7 @@ export default function ClimateChart(props: Props) {
           </div>
         )}
 
-      <div style={{ width: "100%", height: 420 }}>
+      <div className="chart-main">
         <ResponsiveContainer>
           <ComposedChart data={rows} margin={{ top: 8, right: 52, bottom: 4, left: 4 }}>
             <CartesianGrid stroke="var(--gridline)" vertical={false} />

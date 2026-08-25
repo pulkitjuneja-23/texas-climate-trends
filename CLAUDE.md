@@ -702,6 +702,35 @@ exported as `DEFAULT_PLACE` in `lib/geo.ts`. City pixels read roughly a third of
 (355 mm vs 926 mm in 2024), so landing a first-time visitor on pavement made their first impression
 of the water figures wrong with no way to know it.
 
+### 2026-08-25 — Mobile layout
+
+User-reported on a real phone: the source dropdown was cut off on the left, and the season chart
+was too tall.
+
+- **Chart heights moved out of inline styles** into `.chart-main` / `.chart-trend` so they can
+  respond: 420px→250px and 260px→190px under 700px. A 420px plot on a phone is taller than it is
+  wide and stops reading as one year.
+- **Dropdown**: given its own full-width row under 700px, so the menu spans that row exactly
+  (`left:0; right:0; min-width:0`). Previously `right:0` anchored it to a trigger sitting mid-row
+  and the left half hung off-screen.
+- **`.tile { min-width: 0 }`** — grid/flex children default to `min-width:auto` and refuse to
+  shrink below their content. `input[type="date"]` has a large intrinsic minimum, so three date
+  tiles forced every card wider than the screen. This is the one that actually mattered.
+- Mobile query also: 2-column tiles, wrapping `.seg`, smaller chips, tighter padding.
+
+**TESTING MOBILE — DO NOT TRUST `--window-size`.** Chrome enforces a **~485px minimum window
+width**, so `--window-size=390` renders a 485px layout into a 390px image. That *looks* exactly like
+horizontal overflow and sent me chasing a bug that did not exist.
+
+Use CDP `Emulation.setDeviceMetricsOverride` instead — real viewport, no dependencies, since Node 22+
+has a global `WebSocket`. Working scripts are in the session scratchpad
+(`mobile-check.mjs`, `mobile-dropdown.mjs`): launch Chrome with
+`--headless=new --remote-debugging-port=9222`, then set device metrics, navigate, and evaluate.
+
+The reliable overflow test is **`document.documentElement.scrollWidth === clientWidth`**, ignoring
+elements inside `overflow-x` containers (the map and the analog table legitimately exceed the
+viewport inside their own scroll boxes). Verified clean at 390, 360 and 320 px.
+
 ## Next up
 
 Roughly in value order:

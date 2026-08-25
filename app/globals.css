@@ -657,6 +657,19 @@ button:disabled {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 12px 14px;
+  /*
+   * Grid and flex children default to min-width:auto, meaning they refuse to
+   * shrink below their contents. `input[type="date"]` carries a large intrinsic
+   * minimum width, so three date tiles in a row forced the whole card wider
+   * than a phone screen and clipped every panel on the right. This is the fix.
+   */
+  min-width: 0;
+}
+
+.tile input,
+.tile select {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .tile .k {
@@ -879,6 +892,133 @@ tbody tr:last-child td {
 
 .search-results button + button {
   border-top: 1px solid var(--gridline);
+}
+
+/* ---------- chart sizing ---------- */
+
+/*
+ * Heights live here rather than inline so they can respond to screen size.
+ * A 420px chart is right on a desktop but towers over a phone, where the plot
+ * ends up taller than it is wide and the year is hard to read as one shape.
+ */
+.chart-main {
+  width: 100%;
+  height: 420px;
+}
+
+.chart-trend {
+  width: 100%;
+  height: 260px;
+}
+
+/* ---------- phones ---------- */
+
+@media (max-width: 700px) {
+  .chart-main {
+    height: 250px;
+  }
+
+  .chart-trend {
+    height: 190px;
+  }
+
+  /*
+   * The source menu is wider than a phone. Anchored to the trigger it hung off
+   * whichever edge the trigger sat nearest — on a wrapped header row that meant
+   * the left half was cut off entirely. Giving the trigger its own full-width
+   * row lets the menu span that row exactly, with no overhang either side.
+   */
+  .topbar-source,
+  .topbar-source .dropdown-trigger {
+    width: 100%;
+  }
+
+  .topbar-source .dropdown-menu {
+    left: 0;
+    right: 0;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .topbar-inner {
+    gap: 10px 12px;
+    padding: 10px 14px;
+  }
+
+  .shell {
+    padding: 0 14px 48px;
+  }
+
+  .card {
+    padding: 14px;
+  }
+
+  /* Controls stack rather than squeezing into unreadable slivers. */
+  .controls {
+    gap: 8px;
+  }
+
+  .controls .field {
+    flex: 1 1 100%;
+  }
+
+  .controls .field select {
+    width: 100%;
+  }
+
+  /* 26 year chips at full size own the whole screen otherwise. */
+  .chip-row .chip {
+    padding: 3px 7px;
+    font-size: 0.72rem;
+  }
+
+  /* Two tiles across is the most a phone reads comfortably. */
+  .tiles,
+  .tiles.compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  /* Segmented controls wrap instead of running off the edge. */
+  .seg {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .seg button {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .seg button + button {
+    border-left: 1px solid var(--border);
+  }
+
+  /* Nothing may be wider than the screen. */
+  .card,
+  .map-shell,
+  .table-wrap,
+  .foot-row {
+    max-width: 100%;
+  }
+
+  .fr-select {
+    max-width: 100%;
+  }
+
+  .foot-row {
+    flex-wrap: wrap;
+    gap: 4px 10px;
+  }
+
+  h1 {
+    font-size: 1.05rem;
+  }
+
+  .brand small {
+    font-size: 0.66rem;
+  }
 }
 
 /* ---------- misc ---------- */

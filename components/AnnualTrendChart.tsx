@@ -243,7 +243,7 @@ export default function AnnualTrendChart({
         </div>
       )}
 
-      <div style={{ width: "100%", height: 260 }}>
+      <div className="chart-trend">
         <ResponsiveContainer>
           <ComposedChart data={data} margin={{ top: 8, right: 16, bottom: 4, left: 4 }}>
             <CartesianGrid stroke="var(--gridline)" vertical={false} />
