@@ -894,6 +894,46 @@ tbody tr:last-child td {
   border-top: 1px solid var(--gridline);
 }
 
+/* ---------- theme control placement ---------- */
+
+/*
+ * On a wide screen the theme toggle rides in the pinned bar. On a phone that
+ * bar is already three rows tall, and a preference you set once should not hold
+ * a permanent row of a small screen — so it moves into the page and scrolls
+ * away like anything else. Two elements, one piece of state.
+ */
+.mobile-theme {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .topbar-theme {
+    display: none;
+  }
+
+  .mobile-theme {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 0 2px;
+    margin-bottom: 4px;
+  }
+
+  .mobile-theme .mt-label {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    font-weight: 600;
+    flex: none;
+  }
+
+  .mobile-theme .seg {
+    flex: 1 1 auto;
+    width: auto;
+  }
+}
+
 /* ---------- chart sizing ---------- */
 
 /*

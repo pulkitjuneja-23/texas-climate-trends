@@ -542,7 +542,10 @@ export default function Page() {
             </button>
           </div>
 
-          <div className="seg">
+          {/* Hidden on phones — a set-once preference does not deserve a
+              permanent row of a small screen. It reappears below, in the page
+              itself, where it scrolls away like ordinary content. */}
+          <div className="seg topbar-theme">
             {(["system", "light", "dark"] as Theme[]).map((t) => (
               <button key={t} aria-pressed={theme === t} onClick={() => setTheme(t)}>
                 {t === "system" ? "Auto" : t === "light" ? "Light" : "Dark"}
@@ -553,6 +556,19 @@ export default function Page() {
       </div>
 
       <div className="shell">
+        {/* Phone-only twin of the theme control. Same state, so the two can
+            never disagree. */}
+        <div className="mobile-theme">
+          <span className="mt-label">Appearance</span>
+          <div className="seg">
+            {(["system", "light", "dark"] as Theme[]).map((t) => (
+              <button key={t} aria-pressed={theme === t} onClick={() => setTheme(t)}>
+                {t === "system" ? "Auto" : t === "light" ? "Light" : "Dark"}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="grid-2">
           <div className="card">
             <div className="card-head">
