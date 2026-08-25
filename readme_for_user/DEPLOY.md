@@ -4,6 +4,33 @@ Plain-language guide. No prior knowledge assumed.
 
 ---
 
+## ✅ ALREADY DONE — the site is live
+
+**https://texas-climate-trends.vercel.app**
+
+Anyone with that link can open it. No login needed.
+
+Code lives at **https://github.com/pulkitjuneja-23/texas-climate-trends** (private).
+
+**To publish a change from now on, that is the whole procedure:**
+
+```
+git add -A
+git commit -m "say what changed"
+git push
+```
+
+Vercel notices the push and rebuilds the site by itself, usually within a minute. There is no
+separate "deploy" step any more.
+
+> **Preview links.** Vercel also creates addresses like
+> `texas-climate-trends-pulkitjuneja-23.vercel.app`. Those are private test builds and will show a
+> Vercel login page — that is normal and not a fault. Share only the short link above.
+
+The rest of this file explains what all of that means, and is worth reading once.
+
+---
+
 ## First: do you need Docker?
 
 **No.**

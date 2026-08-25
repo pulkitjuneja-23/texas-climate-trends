@@ -636,6 +636,35 @@ direction visible. Anywhere with room for words, the magnitude is shown UNSIGNED
 carries the meaning. Internal `deficitStat` renamed `balanceStat` so the vocabulary cannot creep
 back in from the code side.
 
+### 2026-08-25 — Shipped
+
+- **Live: https://texas-climate-trends.vercel.app** (public, no auth)
+- **Repo: https://github.com/pulkitjuneja-23/texas-climate-trends** (private, `main`)
+- Vercel auto-deploys on push to `main`. There is no manual deploy step.
+
+**Production verified end to end**, not assumed: history 1.7 s / 9,734 rows, forecast, geocode, and
+`/api/et` with **Earth Engine working (130 months)**. Credentials are supplied as
+`GEE_PROJECT_ID` + `GEE_KEY_JSON` env vars in Vercel — the file path variant obviously cannot work
+on a server, so this path was proven locally first by running `npm run start` with `GEE_KEY_JSON`
+set before deploying.
+
+**Vercel URL gotcha:** the SHORT `texas-climate-trends.vercel.app` is production and public; the
+longer `...-pulkitjuneja-23.vercel.app` forms are preview builds behind Vercel's login and return a
+Vercel login page. Don't mistake that for a broken deployment.
+
+**Free-tier limits that matter:** Vercel Hobby allows 300 s per function (our slowest is ~7 s, so
+ample) and is **non-commercial only** — the same condition Earth Engine's free tier carries, so both
+change together if this is ever monetised.
+
+**Git setup notes:** `gh auth setup-git` is required or pushes fail with
+"could not read Username" in a non-interactive shell. A `.githooks/pre-commit` hook blocks any
+commit containing a private key or service-account JSON by CONTENT (tested with a fake key);
+enabled via `git config core.hooksPath .githooks`.
+
+**A stray `env.local` (no leading dot) once slipped past a `.env*.local` rule** and was staged. It
+held no credentials, but the ignore rules are now matched with and without the dot. Always list what
+is actually staged before a first commit, and verify the REMOTE file list after pushing.
+
 ## Next up
 
 Roughly in value order:
