@@ -377,9 +377,19 @@ Per user direction:
 **−1.25 in/decade** (−31.75 mm). Same field, opposite direction. Another reason r²-free trend lines
 must carry the plain-language caveat.
 
-**PowerShell warning learned the hard way:** never round-trip a source file through
-`Get-Content | Set-Content -Encoding utf8` — it mangled every non-ASCII char in ForecastStrip.tsx
-(`°`→`Â°`, `—`→`â€”`). Use the Edit/Write tools for source edits, not shell text substitution.
+**NEVER EDIT SOURCE FILES THROUGH POWERSHELL. USE THE Edit/Write TOOLS.**
+
+This has now corrupted files twice.
+
+- `Get-Content | Set-Content -Encoding utf8` mangled every non-ASCII char in ForecastStrip.tsx.
+- The *read* side is equally dangerous: `Get-Content -Raw` decodes with the system ANSI codepage
+  in PowerShell 5.1, so a UTF-8 file comes back already mojibake. Writing it out "correctly" with
+  `[System.IO.File]::WriteAllText(..., UTF8Encoding)` then double-encodes it. This corrupted
+  openet.ts, page.tsx and CLAUDE.md (180 bad sequences) during a simple path rename.
+
+Detect with: `[Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes($f))` then grep for
+`â€"|Â°|Ã—`. Recover with `git checkout -- <files>` — which is the practical argument for
+committing before any bulk edit.
 
 ### 2026-08-22 (later) — Interface cleanup from user review
 - Removed the "Search, type coordinates…" line under **Your location** and the long "Compares the
@@ -462,7 +472,7 @@ includes the stress and irrigation reference ET assumes away.
 0.3–13.4 mm/day, 2024 annual = 1,643 mm (65 in) against ~929 mm rain. The accumulated-ETo band is
 strikingly *tight* versus rainfall — demand is predictable, supply is not.
 
-**OpenET degrades gracefully:** no key → `{available:false, reason:"…see SETUP-EARTHENGINE.md"}`;
+**OpenET degrades gracefully:** no key → `{available:false, reason:"…see readme_for_user/SETUP-EARTHENGINE.md"}`;
 the UI shows `n/a`, never an error.
 
 **Key implementation notes:**
@@ -492,7 +502,7 @@ model-spread band and low-`et_ensemble_mad_count` greying.
 
 **Connected and verified.** 130 months, 2015-10 → 2026-07, 100 m buffer (7.8 acres), ~7 s cold.
 
-**Setup traps hit (both now fixed in SETUP-EARTHENGINE.md):**
+**Setup traps hit (both now fixed in readme_for_user/SETUP-EARTHENGINE.md):**
 1. **Two IAM roles are required**, not one: `Earth Engine Resource Viewer` AND
    `Service Usage Consumer`. Missing the second gives *"Caller does not have required permission
    to use project …"*, which reads like a bad key when the key is fine. The error handler now

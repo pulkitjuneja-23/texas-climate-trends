@@ -8,7 +8,7 @@ import type { LatLon } from "@/lib/types";
  * Going through EE removes the REST API's hard cap (400 queries/month on the
  * Earth-Engine-linked tier) — EE meters compute, not request counts. The REST
  * key stays as a fallback path if this ever has to move to a commercial
- * licence; see SETUP-EARTHENGINE.md.
+ * licence; see readme_for_user/SETUP-EARTHENGINE.md.
  *
  * WHAT THE DATA IS
  *   collection : projects/openet/assets/ensemble/conus/gridmet/monthly/v2_1
@@ -129,7 +129,7 @@ async function getEe(): Promise<
     return {
       ee: null,
       error:
-        "Earth Engine is not set up yet. Follow SETUP-EARTHENGINE.md to add the key file.",
+        "Earth Engine is not set up yet. Follow readme_for_user/SETUP-EARTHENGINE.md to add the key file.",
     };
   }
 
@@ -187,12 +187,12 @@ async function getEe(): Promise<
 
     if (/not registered|not been used|is disabled|SERVICE_DISABLED/i.test(detail)) {
       error =
-        "This Google project isn't registered for Earth Engine yet — redo Step 1 of SETUP-EARTHENGINE.md.";
+        "This Google project isn't registered for Earth Engine yet — redo Step 1 of readme_for_user/SETUP-EARTHENGINE.md.";
     } else if (roleMatch) {
-      error = `The service account is missing the "${roleMatch[0]}" role. Add it on the IAM page — see Step 2b of SETUP-EARTHENGINE.md.`;
+      error = `The service account is missing the "${roleMatch[0]}" role. Add it on the IAM page — see Step 2b of readme_for_user/SETUP-EARTHENGINE.md.`;
     } else if (/permission|PERMISSION_DENIED|forbidden|403/i.test(detail)) {
       error =
-        "The service account lacks permission on this project — see Step 2 of SETUP-EARTHENGINE.md.";
+        "The service account lacks permission on this project — see Step 2 of readme_for_user/SETUP-EARTHENGINE.md.";
     } else if (/invalid_grant|invalid JWT|Invalid key|PEM/i.test(detail)) {
       error = "The key file looks invalid or corrupted — download a fresh one (Step 3).";
     }

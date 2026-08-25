@@ -827,7 +827,7 @@ export default function Page() {
                 reason:
                   water?.actualEt && !water.actualEt.available
                     ? water.actualEt.reason
-                    : "Earth Engine is not connected yet — see SETUP-EARTHENGINE.md.",
+                    : "Earth Engine is not connected yet — see readme_for_user/SETUP-EARTHENGINE.md.",
                 missingMonths: missingEtMonths,
               }}
             />
