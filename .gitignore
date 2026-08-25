@@ -1,0 +1,34 @@
+node_modules/
+.next/
+out/
+build/
+.DS_Store
+*.pem
+# Environment settings. Matched with AND without the leading dot: a stray
+# "env.local" (no dot) once slipped past a ".env*.local" rule and was staged.
+.env
+.env*
+env.local
+env.*.local
+*.env
+*.env.local
+
+# Earth Engine service account credentials — these are passwords.
+# Prefix-matched, not exact: Windows hides known extensions, so renaming a
+# downloaded key to "earthengine-key.json" commonly yields
+# "earthengine-key.json.json", which an exact-name rule would miss entirely.
+earthengine-key*
+*-key.json*
+*service-account*.json*
+*service_account*.json*
+gcp-*.json*
+*.json.json
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+.cache/
+
+# Microsoft Office lock/recovery files — junk that appears beside open documents.
+~$*
+*.tmp
+*.~*

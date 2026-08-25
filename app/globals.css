@@ -1,0 +1,940 @@
+/*
+ * Design tokens.
+ *
+ * Palette is the validated data-viz reference instance. The five categorical
+ * series slots used by the charts were run through the validator in both modes:
+ * all checks pass, with a light-mode contrast WARN on aqua/yellow/magenta.
+ * That WARN obligates relief, which is why every series carries a direct
+ * end-label and every chart has a table view.
+ */
+
+:root {
+  color-scheme: light;
+
+  --plane: #f9f9f7;
+  --surface: #fcfcfb;
+  --surface-raised: #ffffff;
+
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+
+  --gridline: #e1e0d9;
+  --baseline: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.1);
+  --border-strong: rgba(11, 11, 11, 0.18);
+
+  /* Categorical series slots — fixed order, never cycled. */
+  --series-1: #2a78d6; /* blue    — current year */
+  --series-2: #eb6834; /* orange  */
+  --series-3: #1baf7a; /* aqua    */
+  --series-4: #eda100; /* yellow  */
+  --series-5: #e87ba4; /* magenta */
+
+  /* Climatology envelope — deliberately neutral. It is context, not a series. */
+  --band-outer: #e8e7e1;
+  --band-inner: #d6d5cd;
+  --normal-line: #898781;
+
+  /* Diverging pair for anomalies. */
+  --div-warm: #d03b3b;
+  --div-cool: #2a78d6;
+  --div-mid: #f0efec;
+
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow: 0 1px 2px rgba(11, 11, 11, 0.05), 0 4px 12px rgba(11, 11, 11, 0.04);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --plane: #0d0d0d;
+    --surface: #1a1a19;
+    --surface-raised: #232322;
+
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+
+    --gridline: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255, 255, 255, 0.1);
+    --border-strong: rgba(255, 255, 255, 0.18);
+
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+
+    --band-outer: #262624;
+    --band-inner: #333331;
+    --normal-line: #898781;
+
+    --div-warm: #d03b3b;
+    --div-cool: #3987e5;
+    --div-mid: #383835;
+
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --plane: #0d0d0d;
+  --surface: #1a1a19;
+  --surface-raised: #232322;
+
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted: #898781;
+
+  --gridline: #2c2c2a;
+  --baseline: #383835;
+  --border: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.18);
+
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+
+  --band-outer: #262624;
+  --band-inner: #333331;
+  --normal-line: #898781;
+
+  --div-warm: #d03b3b;
+  --div-cool: #3987e5;
+  --div-mid: #383835;
+
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--plane);
+  color: var(--text-primary);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+h1 {
+  font-size: 1.25rem;
+}
+h2 {
+  font-size: 1.05rem;
+}
+h3 {
+  font-size: 0.9rem;
+}
+
+a {
+  color: var(--series-1);
+}
+
+/* ---------- layout ---------- */
+
+.shell {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 20px 64px;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  /* Above Leaflet's control layer (z-index 1000), or the map's zoom buttons
+     punch through the header as the map scrolls underneath it. */
+  z-index: 1200;
+  background: color-mix(in srgb, var(--plane) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 20px;
+}
+
+.topbar-inner {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.brand {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-right: auto;
+}
+
+.brand small {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  margin-bottom: 18px;
+  box-shadow: var(--shadow);
+}
+
+.card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.card-sub {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  margin: 0 0 14px;
+  max-width: 76ch;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 18px;
+  /* Cards keep their natural height rather than stretching to match the map. */
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- controls ---------- */
+
+.controls {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  margin-bottom: 16px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field > label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+select,
+input[type="text"],
+input[type="search"],
+button {
+  font: inherit;
+  font-size: 0.86rem;
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 7px 10px;
+  min-height: 36px;
+}
+
+select:focus-visible,
+input:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: 1px;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--text-muted);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--surface-raised);
+}
+
+.seg button {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 7px 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.seg button + button {
+  border-left: 1px solid var(--border);
+}
+
+.seg button[aria-pressed="true"] {
+  background: var(--series-1);
+  color: #fff;
+  font-weight: 600;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-raised);
+  font-size: 0.78rem;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.chip[aria-pressed="true"] {
+  border-color: currentColor;
+  font-weight: 600;
+}
+
+.swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: none;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* ---------- header inline stats ---------- */
+
+/*
+ * Compact figures that sit beside a card title instead of occupying a tile row
+ * of their own. Saves a whole band of vertical space per panel.
+ */
+.head-stats {
+  display: flex;
+  gap: 18px;
+  margin-left: auto;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+
+.head-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  line-height: 1.15;
+}
+
+.head-stat .hk {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.head-stat .hv {
+  font-size: 1.05rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- topbar source select ---------- */
+
+.topbar-source .dropdown-trigger {
+  min-width: 0;
+  gap: 6px;
+  padding: 6px 10px;
+}
+
+.topbar-source .dropdown-menu {
+  left: auto;
+  right: 0;
+}
+
+.src-label {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-right: 2px;
+}
+
+.dropdown-foot {
+  border-top: 1px solid var(--gridline);
+  padding: 9px 12px;
+  font-size: 0.73rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+  background: var(--band-outer);
+}
+
+.mini-spinner {
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--series-1);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  display: inline-block;
+  flex: none;
+}
+
+/* ---------- dropdown ---------- */
+
+.dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 210px;
+  justify-content: space-between;
+  font-weight: 600;
+}
+
+.dropdown-trigger .caret {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 800;
+  min-width: 340px;
+  max-width: min(440px, 88vw);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.dropdown-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 10px 12px;
+  min-height: 0;
+}
+
+.dropdown-item + .dropdown-item {
+  border-top: 1px solid var(--gridline);
+}
+
+.dropdown-item:hover:not(:disabled) {
+  background: var(--band-outer);
+}
+
+.dropdown-item:disabled {
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+.dropdown-item:disabled .di-name {
+  color: var(--text-muted);
+}
+
+.di-name {
+  font-weight: 650;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.86rem;
+}
+
+.di-meta {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
+.di-check {
+  margin-left: auto;
+  color: var(--series-1);
+  font-weight: 700;
+}
+
+/* ---------- compact tiles ---------- */
+
+.tiles.compact {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.tiles.compact .tile {
+  padding: 8px 10px;
+}
+
+.tiles.compact .tile .k {
+  font-size: 0.63rem;
+  margin-bottom: 2px;
+}
+
+.tiles.compact .tile .v {
+  font-size: 1.05rem;
+}
+
+.tiles.compact .tile .d {
+  font-size: 0.7rem;
+  margin-top: 1px;
+}
+
+/*
+ * Settings and provenance shown as tight label/value rows rather than tiles.
+ * A tile implies "here is a figure"; these are neither figures nor worth a
+ * whole card cell.
+ */
+.foot-rows {
+  margin-top: 8px;
+  border-top: 1px solid var(--gridline);
+}
+
+.foot-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 2px;
+  font-size: 0.76rem;
+}
+
+.foot-row + .foot-row {
+  border-top: 1px solid var(--gridline);
+}
+
+.fr-k {
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex: none;
+}
+
+.fr-v {
+  color: var(--text-secondary);
+  margin-left: auto;
+  text-align: right;
+}
+
+.fr-select {
+  margin-left: auto;
+  font-size: 0.76rem;
+  min-height: 28px;
+  padding: 3px 6px;
+  max-width: 62%;
+}
+
+.since-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 5px;
+}
+
+.since-row input[type="date"] {
+  font-size: 0.7rem;
+  padding: 2px 5px;
+  min-height: 0;
+  width: 100%;
+}
+
+/* ---------- notes / badges ---------- */
+
+.note {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--warning) 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--warning) 34%, transparent);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  line-height: 1.45;
+}
+
+.note.info {
+  background: color-mix(in srgb, var(--series-1) 8%, var(--surface));
+  border-color: color-mix(in srgb, var(--series-1) 28%, transparent);
+}
+
+.note.error {
+  background: color-mix(in srgb, var(--critical) 10%, var(--surface));
+  border-color: color-mix(in srgb, var(--critical) 34%, transparent);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.68rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: var(--band-outer);
+  color: var(--text-secondary);
+}
+
+/* ---------- stat tiles ---------- */
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
+  gap: 10px;
+}
+
+.tile {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+}
+
+.tile .k {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+
+.tile .v {
+  font-size: 1.45rem;
+  font-weight: 640;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.tile .d {
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+  margin-top: 3px;
+}
+
+/* ---------- table view (contrast relief) ---------- */
+
+.table-wrap {
+  overflow-x: auto;
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+th,
+td {
+  text-align: right;
+  padding: 7px 11px;
+  border-bottom: 1px solid var(--gridline);
+  white-space: nowrap;
+}
+
+th:first-child,
+td:first-child {
+  text-align: left;
+}
+
+thead th {
+  background: var(--band-outer);
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  position: sticky;
+  top: 0;
+}
+
+tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* ---------- analog comparison table ---------- */
+
+/*
+ * Two banded groups: what already happened vs what came afterwards. The band
+ * plus a hard 2px divider is what makes the table readable — otherwise the past
+ * and future numbers run together and the comparison is lost.
+ */
+.analog-table .group-row th {
+  font-size: 0.62rem;
+  letter-spacing: 0.07em;
+  padding: 5px 11px;
+  text-align: center;
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.analog-table .grp-blank {
+  background: var(--surface);
+  border-bottom: 0;
+}
+
+.analog-table .grp-past {
+  background: var(--band-outer);
+  color: var(--text-secondary);
+}
+
+.analog-table .grp-future {
+  background: color-mix(in srgb, var(--series-1) 14%, var(--surface));
+  color: var(--text-primary);
+  border-left: 2px solid var(--series-1);
+}
+
+.analog-table th.future-start,
+.analog-table td.future-start {
+  border-left: 2px solid var(--series-1);
+}
+
+.analog-table th.future-start,
+.analog-table th.future,
+.analog-table td.future-start,
+.analog-table td.future {
+  background: color-mix(in srgb, var(--series-1) 7%, transparent);
+}
+
+.analog-table .now-row {
+  background: color-mix(in srgb, var(--series-1) 10%, transparent);
+}
+
+.analog-table .now-row td {
+  border-bottom: 2px solid var(--border-strong);
+}
+
+/* Tighter than the default table so the future columns stay on screen. */
+.analog-table th,
+.analog-table td {
+  padding: 6px 8px;
+}
+
+.analog-table th {
+  font-size: 0.66rem;
+}
+
+/* ---------- tooltip ---------- */
+
+.tt {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 9px 11px;
+  box-shadow: var(--shadow);
+  font-size: 0.8rem;
+  min-width: 168px;
+}
+
+.tt .tt-h {
+  font-weight: 650;
+  margin-bottom: 6px;
+  color: var(--text-primary);
+}
+
+.tt-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  justify-content: space-between;
+  color: var(--text-secondary);
+  padding: 1px 0;
+}
+
+.tt-row .lbl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tt-row .val {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* ---------- map ---------- */
+
+.map-shell {
+  height: 320px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  /* Traps Leaflet's internal z-index stack inside this box so no map control
+     can ever compete with page chrome. Belt and braces alongside the header. */
+  isolation: isolate;
+  z-index: 0;
+}
+
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+  background: var(--band-outer);
+  font-family: inherit;
+}
+
+.search-wrap {
+  position: relative;
+}
+
+.search-results {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 900;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.search-results button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 9px 12px;
+  font-size: 0.84rem;
+}
+
+.search-results button:hover {
+  background: var(--band-outer);
+}
+
+.search-results button + button {
+  border-top: 1px solid var(--gridline);
+}
+
+/* ---------- misc ---------- */
+
+.spinner {
+  width: 15px;
+  height: 15px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--series-1);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  display: inline-block;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.small {
+  font-size: 0.78rem;
+}
+
+footer.site {
+  border-top: 1px solid var(--border);
+  padding-top: 18px;
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  line-height: 1.6;
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--band-outer), var(--surface-raised), var(--band-outer));
+  background-size: 200% 100%;
+  animation: sheen 1.3s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}
+
+@keyframes sheen {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,44 @@
+#!/bin/sh
+#
+# Blocks a commit that contains credentials.
+#
+# .gitignore is a list of files to skip — it cannot help if a secret ends up
+# somewhere unexpected, or if a rule has a small gap. A stray "env.local"
+# (no leading dot) once slipped past a ".env*.local" rule and was staged.
+#
+# This checks the CONTENT of whatever is actually about to be committed, so it
+# catches the case the filename rules miss.
+#
+# Enabled by: git config core.hooksPath .githooks
+
+fail=0
+
+# 1. Private keys and service-account credentials, by content.
+if git diff --cached -U0 | grep -qE 'BEGIN (RSA |EC |OPENSSH |PGP )?PRIVATE KEY'; then
+  echo "BLOCKED: a private key is in this commit."
+  fail=1
+fi
+
+if git diff --cached -U0 | grep -qE '"type"[[:space:]]*:[[:space:]]*"service_account"'; then
+  echo "BLOCKED: a Google service-account key is in this commit."
+  fail=1
+fi
+
+# 2. Filenames that should never be tracked, whatever .gitignore says.
+bad_files=$(git diff --cached --name-only | grep -iE '(^|/)(\.?env(\..*)?\.local|.*-key\.json.*|.*service[_-]account.*\.json.*|.*\.json\.json)$')
+if [ -n "$bad_files" ]; then
+  echo "BLOCKED: these files must never be committed:"
+  echo "$bad_files" | sed 's/^/    /'
+  fail=1
+fi
+
+if [ "$fail" -ne 0 ]; then
+  echo ""
+  echo "Nothing was committed. Remove the offending file from the commit with:"
+  echo "    git restore --staged <file>"
+  echo ""
+  echo "If you are certain this is a false alarm, ask before overriding."
+  exit 1
+fi
+
+exit 0
