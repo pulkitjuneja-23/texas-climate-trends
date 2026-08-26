@@ -52,7 +52,7 @@ const AGGREGATES: Array<{
   { field: "tmin", label: "Average daily low", how: "mean", quantity: "temp", warmIsHigh: true, high: "Warmer than average", low: "Cooler than average" },
   { field: "tmean", label: "Average temperature", how: "mean", quantity: "temp", warmIsHigh: true, high: "Warmer than average", low: "Cooler than average" },
   { field: "gdd", label: "Annual growing degree days", how: "sum", quantity: "gdd", warmIsHigh: true, high: "More heat units", low: "Fewer heat units" },
-  { field: "dtr", label: "Average day–night swing", how: "mean", quantity: "tempDelta", warmIsHigh: true, high: "Bigger swing", low: "Smaller swing" },
+  { field: "dtr", label: "Average temperature swing (high − low)", how: "mean", quantity: "tempDelta", warmIsHigh: true, high: "Bigger swing", low: "Smaller swing" },
   /**
    * Water variables only have data from 2016, so most years simply have no bar.
    * ET is coloured "more/less used" rather than good/bad: a high ET year can

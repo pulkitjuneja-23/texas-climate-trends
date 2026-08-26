@@ -71,7 +71,7 @@ const VARIABLES: Array<{
    * Day-night swing. `tempDelta`, never `temp` — it is a difference, so it
    * converts by ratio alone with no +32 offset.
    */
-  { field: "dtr", label: "Day–night temperature swing", quantity: "tempDelta", defaultMode: "daily", accumulable: false, hint: "How far the temperature falls overnight. Warm nights make a crop burn through the sugars it made during the day, so a bigger swing generally favours grain fill and fibre quality. A shrinking swing usually means cloud or humidity — and longer leaf wetness." },
+  { field: "dtr", label: "Temperature swing (high − low)", quantity: "tempDelta", defaultMode: "daily", accumulable: false, hint: "The day's high minus its low — how far the temperature falls overnight. Warm nights make a crop burn through the sugars it made during the day, so a bigger swing generally favours grain fill and fibre quality. A shrinking swing usually means cloud or humidity — and longer leaf wetness." },
   // Water variables share the same axis but only exist from late 2015, so
   // earlier years simply draw nothing rather than sitting at zero.
   { field: "et", label: "Water used (ET)", quantity: "precip", defaultMode: "accumulated", accumulable: true },
