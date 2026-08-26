@@ -6,8 +6,14 @@ import type { DailyRecord, TaggedRecord } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const revalidate = 10800;
-/** gridMET fetches a year per request, so allow headroom on first load. */
-export const maxDuration = 60;
+/**
+ * gridMET needs ~81 upstream calls for a 25-year series and the hop from
+ * Vercel to Idaho is slow — cold loads were hitting the old 60 s ceiling and
+ * returning 504 for every location nobody had visited recently, which is the
+ * default source. Vercel's free tier allows 300 s, so take the headroom: a slow
+ * first answer beats a failed one, and the result is then cached for hours.
+ */
+export const maxDuration = 300;
 
 /**
  * GET /api/history?lat=&lon=&startYear=&endYear=&source=

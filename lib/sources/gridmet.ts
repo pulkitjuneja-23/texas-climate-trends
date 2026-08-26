@@ -81,7 +81,18 @@ const EPOCH = Date.UTC(1900, 0, 1);
 const FILE_START_DAY = Math.round((Date.UTC(1979, 0, 1) - EPOCH) / 86400000);
 
 const MISSING = 32767;
-const CONCURRENCY = 8;
+
+/**
+ * A 25-year point series is ~81 requests (3 variables x 27 years) because
+ * THREDDS refuses anything longer than 365 days per call — 731 days returns a
+ * 414. So the only lever on wall-clock time is how many run at once.
+ *
+ * 8 was fine from a laptop (~5 s) but timed out at 60 s from Vercel, where the
+ * round trip to Idaho is far longer: ~11 sequential waves of a slow hop. 16
+ * halves the waves. Kept well short of a number that would look like abuse to
+ * a public research server.
+ */
+const CONCURRENCY = 16;
 
 export const meta: SourceMeta = {
   id: "gridmet",
