@@ -731,6 +731,46 @@ The reliable overflow test is **`document.documentElement.scrollWidth === client
 elements inside `overflow-x` containers (the map and the analog table legitimately exceed the
 viewport inside their own scroll boxes). Verified clean at 390, 360 and 320 px.
 
+### 2026-08-26 — gridMET moved to Earth Engine (10-20x faster)
+
+**The problem.** Idaho's THREDDS server caps a request at 365 days (731 returns 414), so a 25-year
+point series cost 3 vars x 27 years = **81 HTTP requests**. ~5 s from a laptop; **73-131 s from
+Vercel**, and before the maxDuration bump it 504'd outright — on what was then the default source.
+
+**The fix.** gridMET is in the Earth Engine catalog as `IDAHO_EPSCOR/GRIDMET` (1979-present, daily,
+4 km, bands `tmmx` `tmmn` `pr` `eto` `etr`). `getRegion` returns a point series in one call because
+the extraction happens beside the data. **Now 6-14 s.**
+
+Three further wins:
+- **Real units.** EE serves Kelvin and mm. The packed-integer trap is gone — the THREDDS feed
+  returned raw UInt16 with per-variable scale/offset (tmmx +220 K, **tmmn +210 K**), and one offset
+  applied to both produced a minimum above the maximum.
+- **Reference ET is free.** The `eto` band rides along in the same request, deleting a separate
+  ~27-request THREDDS fetch. `fetchReferenceEt` now shares the call.
+- **Five parallel 5-year spans** beat one big call: 13.7 s single vs 10.6 s chunked. No cap forces
+  this — purely speed. Ends are exclusive; verified zero duplicate dates at the seams.
+
+**KNOWN DISCREPANCY — verified day by day against Idaho.** 9,731 of 9,732 days agree within
+0.04 degC / 0.03 mm. The exception is **2026-01-01**, where EE reads ~11.8 degC low across northern
+and central Texas (a cold dip between two warm days). The Lubbock airport gauge recorded 25.6 degC,
+so **EE is the wrong one** — an ingestion artifact at the year boundary. One winter day in 9,732
+(0.01%), outside the growing season, accepted to remove a timeout. Re-check if more appear.
+
+**THE BUILD TRAP THIS EXPOSED — typecheck will NOT catch it.** `app/page.tsx` is a client component
+and imported `DEFAULT_SOURCE_ID` from `registry.ts`. Registry imports every source; gridMET now
+reaches `earthengine.ts`, which reaches `node:fs`. Webpack traced Node APIs into the browser bundle
+and `next build` failed:
+
+```
+node:fs/promises -> lib/sources/earthengine.ts -> gridmet.ts -> registry.ts -> app/page.tsx
+```
+
+`tsc --noEmit` passed cleanly throughout. **Run `npm run build` after any change to what a client
+component imports.** The constant now lives in `lib/sources/defaults.ts`, which must stay free of
+server-only imports; `registry.ts` re-exports it for server code.
+
+EE connection extracted to `lib/sources/earthengine.ts` and shared by OpenET and gridMET.
+
 ## Next up
 
 Roughly in value order:

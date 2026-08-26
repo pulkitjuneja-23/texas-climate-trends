@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DailyRecord, Place, SourceMeta, TaggedRecord } from "@/lib/types";
-import { DEFAULT_SOURCE_ID } from "@/lib/sources/registry";
+// From `defaults`, never `registry`: registry pulls in every source module,
+// and the Earth Engine ones use Node APIs that cannot be bundled for a browser.
+import { DEFAULT_SOURCE_ID } from "@/lib/sources/defaults";
 import { DEFAULT_PLACE } from "@/lib/geo";
 import { GDD_PRESETS } from "@/lib/agro/gdd";
 import {

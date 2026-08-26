@@ -58,4 +58,6 @@ export function listSources(): SourceMeta[] {
   return [...LIVE_SOURCES.map((s) => s.meta), ...PLANNED];
 }
 
-export const DEFAULT_SOURCE_ID = "nasapower";
+// Re-exported for server code; the value lives in `defaults.ts` so the client
+// can read it without importing any source module. See that file.
+export { DEFAULT_SOURCE_ID } from "./defaults";
