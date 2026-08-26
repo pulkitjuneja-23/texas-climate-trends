@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSource, DEFAULT_SOURCE_ID, listSources } from "@/lib/sources/registry";
 import { findNearestStation, fetchStationDaily } from "@/lib/sources/stations";
-import { validateLatLon } from "@/lib/geo";
+import { validateLatLon, snapToCell, snapToStep } from "@/lib/geo";
 import type { DailyRecord, TaggedRecord } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -73,7 +73,26 @@ export async function GET(req: Request) {
     const start = `${startYear}-01-01`;
     const end = endYear >= currentYear ? today : `${endYear}-12-31`;
 
-    const primary = await source.fetchDaily({ lat, lon, start, end });
+    /**
+     * Snap to the source's own grid before fetching.
+     *
+     * Within one cell the data is identical, so this changes no number — but it
+     * means every request inside a cell resolves to the same upstream call and
+     * therefore the same cached answer. With NASA POWER's ~55 km cells that can
+     * be a whole county collapsing to one fetch, which saves both wait time and
+     * Earth Engine quota. The snapped point is returned so the UI can say what
+     * was actually read rather than implying pin-point precision.
+     */
+    const snapped = source.meta.cellDeg
+      ? snapToCell(lat, lon, source.meta.cellDeg)
+      : snapToStep(lat, lon, source.meta.snapDeg);
+
+    const primary = await source.fetchDaily({
+      lat: snapped.lat,
+      lon: snapped.lon,
+      start,
+      end,
+    });
 
     let lastGoodIdx = primary.length - 1;
     while (lastGoodIdx >= 0 && !hasData(primary[lastGoodIdx])) lastGoodIdx--;
@@ -95,7 +114,10 @@ export async function GET(req: Request) {
       const gapEnd = today;
       if (gapStart <= gapEnd) {
         try {
-          stationInfo = await findNearestStation(lat, lon, undefined);
+          // Same reasoning: one station serves a wide area, so round the lookup
+          // to ~5 km and let neighbouring fields share the cached result.
+          const s = snapToStep(lat, lon, 0.05);
+          stationInfo = await findNearestStation(s.lat, s.lon, undefined);
           if (stationInfo) {
             const fill = await fetchStationDaily(
               stationInfo.id,
@@ -118,6 +140,8 @@ export async function GET(req: Request) {
     return NextResponse.json(
       {
         location: { lat, lon },
+        /** Where the data was actually read, after snapping to the grid. */
+        readAt: snapped,
         source: source.meta,
         availableSources: listSources(),
         range: { start, end, startYear, endYear },

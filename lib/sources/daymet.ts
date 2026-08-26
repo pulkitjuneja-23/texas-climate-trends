@@ -37,6 +37,8 @@ export const meta: SourceMeta = {
     "Thornton, M.M. et al. (2022). Daymet: Daily Surface Weather Data on a 1-km Grid for North America, Version 4 R1. ORNL DAAC.",
   url: "https://daymet.ornl.gov/",
   available: true,
+  /** ~1 km. Kept fine so Daymet's advantage over the others survives snapping. */
+  cellDeg: { lat: 0.01, lon: 0.01 },
   note: "Finest resolution of any source here (1 km), but it is released once a year — it runs roughly 8 months behind and cannot show the current season. Best for studying past years, not tracking this one.",
 };
 

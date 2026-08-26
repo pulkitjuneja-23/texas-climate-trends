@@ -143,16 +143,42 @@ export async function getRegionSeries(
   end: string,
   scaleM: number
 ): Promise<Array<{ date: string; values: Record<string, number | null>; millis: number }>> {
-  const rows: unknown[][] = await new Promise((resolve, reject) =>
-    ee
-      .ImageCollection(collectionId)
-      .filterDate(start, end)
-      .select(bands)
-      .getRegion(ee.Geometry.Point([lon, lat]), scaleM)
-      .evaluate((v: unknown[][], err: unknown) =>
-        err ? reject(new Error(describeEeError(err))) : resolve(v ?? [])
-      )
-  );
+  /**
+   * Retry transient failures.
+   *
+   * Earth Engine caps a project at 40 concurrent requests and answers 429 past
+   * it; single requests also fail occasionally for no lasting reason — one was
+   * observed failing once and then succeeding three times running. Without a
+   * retry each of those reaches a farmer as a broken panel, so back off briefly
+   * and try again rather than surfacing a blip.
+   */
+  const attempt = (): Promise<unknown[][]> =>
+    new Promise((resolve, reject) =>
+      ee
+        .ImageCollection(collectionId)
+        .filterDate(start, end)
+        .select(bands)
+        .getRegion(ee.Geometry.Point([lon, lat]), scaleM)
+        .evaluate((v: unknown[][], err: unknown) =>
+          err ? reject(new Error(describeEeError(err))) : resolve(v ?? [])
+        )
+    );
+
+  let rows: unknown[][] = [];
+  let lastError: unknown = null;
+  for (let tryNo = 0; tryNo < 3; tryNo++) {
+    try {
+      rows = await attempt();
+      lastError = null;
+      break;
+    } catch (e) {
+      lastError = e;
+      // 1s then 3s. Long enough for a concurrency slot to free, short enough
+      // that the visitor is not left waiting on a lost cause.
+      if (tryNo < 2) await new Promise((r) => setTimeout(r, tryNo === 0 ? 1000 : 3000));
+    }
+  }
+  if (lastError) throw lastError instanceof Error ? lastError : new Error(String(lastError));
 
   if (!rows.length) return [];
 

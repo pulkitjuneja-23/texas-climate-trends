@@ -61,14 +61,8 @@ interface EtPayload {
     | { available: false; reason: string };
 }
 
-/** Grid cell drawn on the map, per source. Stations are a point. */
-const CELL_SIZE: Record<string, { lat: number; lon: number } | null> = {
-  nasapower: { lat: 0.5, lon: 0.625 },
-  openmeteo: { lat: 0.1, lon: 0.1 },
-  gridmet: { lat: 1 / 24, lon: 1 / 24 },
-  daymet: { lat: 0.01, lon: 0.01 },
-  stations: null,
-};
+// The grid cell comes from the source's own metadata now — one definition,
+// used both to draw the map rectangle and to snap requests server-side.
 
 /**
  * Optional URL overrides — ?lat=&lon=&source=&place= — so a location can be
@@ -581,7 +575,7 @@ export default function Page() {
             <LocationPicker
               place={place}
               onChange={handlePlace}
-              cellSize={CELL_SIZE[sourceId] ?? null}
+              cellSize={sourceList.find((s) => s.id === sourceId)?.cellDeg ?? null}
             />
             <div className="small" style={{ marginTop: 10, color: "var(--text-secondary)" }}>
               <strong>{place.label}</strong> · {place.lat.toFixed(4)}°, {place.lon.toFixed(4)}°

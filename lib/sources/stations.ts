@@ -48,6 +48,14 @@ export const meta: SourceMeta = {
   attribution: "Iowa Environmental Mesonet, Iowa State University; NWS/FAA ASOS network.",
   url: "https://mesonet.agron.iastate.edu/",
   available: true,
+  cellDeg: null,
+  /**
+   * No grid — a station is a point. But the SAME station serves a wide area,
+   * so rounding to ~5 km lets neighbouring requests reuse one lookup. It cannot
+   * change the answer except where two stations are almost equidistant, and
+   * there either is defensible.
+   */
+  snapDeg: 0.05,
   note: "The only real measurements here — everything else is a computer model. But it is one point: a station 30 miles off can easily miss a thunderstorm that hit your field.",
 };
 

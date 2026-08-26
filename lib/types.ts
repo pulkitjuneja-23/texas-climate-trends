@@ -75,6 +75,24 @@ export interface SourceMeta {
   /** false => shown in the picker but disabled, with `note` explaining why. */
   available: boolean;
   note?: string;
+  /**
+   * Native grid cell in degrees.
+   *
+   * Serves two jobs from one definition: it is drawn on the map so the grower
+   * can see the real resolution, and requests are snapped to the cell centre
+   * before fetching. Two fields in the same cell receive byte-identical data,
+   * so snapping loses nothing and lets them share one cached answer — which
+   * cuts wait time and Earth Engine quota together.
+   *
+   * Null for point sources, where there is no cell to snap to.
+   */
+  cellDeg?: { lat: number; lon: number } | null;
+  /**
+   * How far a request may be moved when snapping, in degrees. Used for sources
+   * without a grid (a station serves a wide area, so nearby requests can safely
+   * share one lookup).
+   */
+  snapDeg?: number;
 }
 
 export interface FetchOpts {

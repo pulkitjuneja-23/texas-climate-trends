@@ -13,4 +13,12 @@
  * Nothing server-only may ever be imported from here. Keep it to plain values.
  */
 
-export const DEFAULT_SOURCE_ID = "nasapower";
+/**
+ * gridMET: 4 km, ~3 days behind, built on PRISM — the best data here.
+ *
+ * It was briefly demoted to NASA POWER while it took 73-131 s. Serving it
+ * through Earth Engine as a single request brought that to ~14 s, and grid
+ * snapping means most visits land on an already-cached cell, so it is fit to
+ * lead again.
+ */
+export const DEFAULT_SOURCE_ID = "gridmet";

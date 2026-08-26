@@ -49,6 +49,8 @@ export const meta: SourceMeta = {
     "Abatzoglou, J.T. (2013). gridMET, Climatology Lab, University of Idaho. Served via Google Earth Engine.",
   url: "https://www.climatologylab.org/gridmet.html",
   available: true,
+  /** 1/24 degree — the native gridMET cell, ~4 km. */
+  cellDeg: { lat: 1 / 24, lon: 1 / 24 },
   note: "The best detail here — 4 km, only ~3 days behind, built on PRISM. Needs the Earth Engine connection.",
 };
 
@@ -56,40 +58,32 @@ export const meta: SourceMeta = {
 const BANDS = ["tmmx", "tmmn", "pr", "eto"];
 
 /**
- * Split a range into ~5-year spans.
+ * ONE request for the whole series. Do not split it into parallel chunks.
  *
- * One call for 25 years works, but Earth Engine parallelises across separate
- * calls better than it does within one: measured 13.7 s as a single request
- * versus 10.6 s as five concurrent ones. Unlike the Idaho server, there is no
- * cap forcing this — it is purely a speed choice, so the spans are large.
+ * Chunking into six 5-year spans was measurably faster — 10.6 s against 13.7 s
+ * — but Earth Engine allows only **40 concurrent requests per project**, and
+ * six requests per visitor caps the site at about six simultaneous first-time
+ * lookups before Google starts refusing with HTTP 429.
+ *
+ * One request per visitor raises that ceiling to ~40 for the cost of about
+ * three seconds. Throughput under load matters far more here than the fastest
+ * possible single answer.
  */
-function fiveYearSpans(start: string, end: string): Array<[string, string]> {
-  const spans: Array<[string, string]> = [];
-  const endYear = Number(end.slice(0, 4));
-  let y = Number(start.slice(0, 4));
-  let from = start;
-  while (y <= endYear) {
-    const nextY = Math.min(y + 5, endYear + 1);
-    const to = nextY > endYear ? shiftDay(end, 1) : `${nextY}-01-01`;
-    spans.push([from, to]);
-    from = to;
-    y = nextY;
-  }
-  return spans;
-}
-
 export async function fetchDaily(opts: FetchOpts): Promise<DailyRecord[]> {
   const conn = await getEe();
   if (!conn.ee) throw new Error(conn.error);
 
-  const spans = fiveYearSpans(opts.start, opts.end);
-  const chunks = await Promise.all(
-    spans.map(([s, e]) =>
-      getRegionSeries(conn.ee, COLLECTION, BANDS, opts.lat, opts.lon, s, e, SCALE_M)
-    )
+  const rows = await getRegionSeries(
+    conn.ee,
+    COLLECTION,
+    BANDS,
+    opts.lat,
+    opts.lon,
+    opts.start,
+    // getRegion's end is exclusive; nudge so the final day is included.
+    shiftDay(opts.end, 1),
+    SCALE_M
   );
-
-  const rows = chunks.flat().sort((a, b) => a.millis - b.millis);
 
   return rows
     .filter((r) => r.date >= opts.start && r.date <= opts.end)
@@ -131,15 +125,18 @@ export async function fetchReferenceEt(opts: FetchOpts): Promise<DailyEto[]> {
   const conn = await getEe();
   if (!conn.ee) throw new Error(conn.error);
 
-  const chunks = await Promise.all(
-    fiveYearSpans(opts.start, opts.end).map(([s, e]) =>
-      getRegionSeries(conn.ee, COLLECTION, ["eto"], opts.lat, opts.lon, s, e, SCALE_M)
-    )
+  const rows = await getRegionSeries(
+    conn.ee,
+    COLLECTION,
+    ["eto"],
+    opts.lat,
+    opts.lon,
+    opts.start,
+    shiftDay(opts.end, 1),
+    SCALE_M
   );
 
-  return chunks
-    .flat()
-    .sort((a, b) => a.millis - b.millis)
+  return rows
     .filter((r) => r.date >= opts.start && r.date <= opts.end)
     .map((r) => ({ date: r.date, eto: r.values.eto }));
 }

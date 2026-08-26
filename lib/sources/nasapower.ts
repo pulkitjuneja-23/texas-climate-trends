@@ -49,6 +49,9 @@ export const meta: SourceMeta = {
     "NASA Prediction Of Worldwide Energy Resources (POWER), Langley Research Center. Funded through the NASA Earth Science/Applied Science Program.",
   url: "https://power.larc.nasa.gov/",
   available: true,
+  // MERRA-2 grid. A whole county often falls in one cell, so snapping here
+  // collapses a great many separate lookups into one.
+  cellDeg: { lat: 0.5, lon: 0.625 },
   note: "~55 km grid cell — one cell spans several Texas counties. Good for climate trends, too coarse to separate one field from the next.",
 };
 

@@ -19,6 +19,40 @@ export function inTexas(lat: number, lon: number): boolean {
   );
 }
 
+/**
+ * Move a request to the centre of the grid cell that contains it.
+ *
+ * Within one cell every point returns identical data, so this changes no
+ * number — but it means two farmers a mile apart share a single cached answer
+ * instead of triggering two separate fetches. gridMET cells are 4 km; NASA
+ * POWER cells are ~55 km, where a whole county often collapses to one request.
+ *
+ * Deliberately NOT applied to OpenET: at 30 m its entire value is telling one
+ * field from the next, and shifting the sample by even 100 m would change what
+ * is measured rather than merely how it is addressed.
+ */
+export function snapToCell(
+  lat: number,
+  lon: number,
+  cell: { lat: number; lon: number } | null | undefined
+): LatLon {
+  if (!cell || !(cell.lat > 0) || !(cell.lon > 0)) return { lat, lon };
+  const centre = (v: number, size: number) => Math.floor(v / size) * size + size / 2;
+  return {
+    lat: Number(centre(lat, cell.lat).toFixed(6)),
+    lon: Number(centre(lon, cell.lon).toFixed(6)),
+  };
+}
+
+/** Round to a fixed step — for sources with no grid of their own. */
+export function snapToStep(lat: number, lon: number, step: number | undefined): LatLon {
+  if (!step || !(step > 0)) return { lat, lon };
+  return {
+    lat: Number((Math.round(lat / step) * step).toFixed(6)),
+    lon: Number((Math.round(lon / step) * step).toFixed(6)),
+  };
+}
+
 export function validateLatLon(latRaw: string | null, lonRaw: string | null): LatLon {
   const lat = Number(latRaw);
   const lon = Number(lonRaw);
