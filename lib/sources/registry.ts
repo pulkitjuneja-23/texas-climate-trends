@@ -29,7 +29,16 @@ import stations from "./stations";
  * whole-CONUS daily rasters, so a 25-year point series would be ~36,000
  * downloads. gridMET is the substitute — same 4 km grid, and built on PRISM.
  */
-const LIVE_SOURCES: WeatherSource[] = [gridmet, daymet, stations, nasapower];
+/**
+ * NASA POWER leads because it answers in one request (~2 s), and a first
+ * impression that loads is worth more than one that is 4 km.
+ *
+ * gridMET is better data but needs ~81 upstream calls for a 25-year series —
+ * the server caps a request at 365 days — which took 73-131 s from Vercel and
+ * previously timed out entirely. It stays one click away, with the cost stated
+ * in the picker.
+ */
+const LIVE_SOURCES: WeatherSource[] = [nasapower, gridmet, daymet, stations];
 
 const PLANNED: SourceMeta[] = [];
 
@@ -49,4 +58,4 @@ export function listSources(): SourceMeta[] {
   return [...LIVE_SOURCES.map((s) => s.meta), ...PLANNED];
 }
 
-export const DEFAULT_SOURCE_ID = "gridmet";
+export const DEFAULT_SOURCE_ID = "nasapower";

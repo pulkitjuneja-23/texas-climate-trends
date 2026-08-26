@@ -784,6 +784,18 @@ tbody tr:last-child td {
   background: color-mix(in srgb, var(--series-1) 10%, transparent);
 }
 
+/* The long-run baseline: set apart from the matched years above it. */
+.analog-table .avg-row td {
+  border-top: 2px solid var(--border-strong);
+  background: var(--band-outer);
+  font-style: italic;
+}
+
+.analog-table .avg-row td.future,
+.analog-table .avg-row td.future-start {
+  background: color-mix(in srgb, var(--series-1) 12%, var(--band-outer));
+}
+
 .analog-table .now-row td {
   border-bottom: 2px solid var(--border-strong);
 }

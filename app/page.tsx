@@ -91,7 +91,9 @@ function readUrlDefaults(): {
   const lat = Number(latRaw);
   const lon = Number(lonRaw);
   const source = q.get("source");
-  const allowed: Field[] = ["tmax", "tmin", "tmean", "precip", "gdd", "et", "balance", "eto"];
+  const allowed: Field[] = [
+    "tmax", "tmin", "tmean", "precip", "gdd", "dtr", "et", "balance", "eto",
+  ];
   const pick = (raw: string | null): Field | null =>
     raw && (allowed as string[]).includes(raw) ? (raw as Field) : null;
   const variable = pick(q.get("variable"));

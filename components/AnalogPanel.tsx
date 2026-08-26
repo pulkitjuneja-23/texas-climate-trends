@@ -149,7 +149,12 @@ export default function AnalogPanel({
     >();
     if (!dailyEt || dailyEt.size === 0) return out;
 
-    const years = [result.currentYear, ...result.matches.map((m) => m.year)];
+    // Every candidate, not just the shown matches — the long-run average row
+    // needs water figures across all of them.
+    const years = [
+      result.currentYear,
+      ...new Set([...result.matches.map((m) => m.year), ...result.candidateYears]),
+    ];
     for (const y of years) {
       const w = windowForYear(y, result.windowStart, result.asOf);
       const past = waterBalanceForWindow(records, dailyEt, w.start, w.end);
@@ -165,6 +170,29 @@ export default function AnalogPanel({
     }
     return out;
   }, [dailyEt, records, result, lookAhead]);
+
+  /** Mean water figures across every candidate year that has ET at all. */
+  const waterAverages = useMemo(() => {
+    const past: number[] = [];
+    const pastBal: number[] = [];
+    const next: number[] = [];
+    const nextBal: number[] = [];
+    for (const y of result.candidateYears) {
+      const w = water.get(y);
+      if (w?.past?.et != null) past.push(w.past.et);
+      if (w?.past?.balance != null) pastBal.push(w.past.balance);
+      if (w?.next?.et != null) next.push(w.next.et);
+      if (w?.next?.balance != null) nextBal.push(w.next.balance);
+    }
+    const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
+    return {
+      pastEt: avg(past),
+      pastBalance: avg(pastBal),
+      nextEt: avg(next),
+      nextBalance: avg(nextBal),
+      n: past.length,
+    };
+  }, [water, result.candidateYears]);
 
   /** "—" when ET simply does not reach that year. */
   function etCell(w: WaterWindow | null | undefined): string {
@@ -379,6 +407,87 @@ export default function AnalogPanel({
                 </td>
               </tr>
             ))}
+
+            {/*
+              The baseline. Without it the matched years float free: "0.5 to 8.6
+              in afterwards" only becomes meaningful once you know a typical year
+              delivers 4 in. Averaged over every candidate year, not the top
+              five, because this row answers "what is normal", not "what is
+              similar".
+            */}
+            {result.averages && (
+              <tr className="avg-row">
+                <td style={{ fontWeight: 650 }}>Typical year</td>
+                <td className="muted">avg</td>
+                {featureKeys.map((k) => (
+                  <td key={k}>{fmtFeature(result.averages!.features[k], k, units)}</td>
+                ))}
+                <td>
+                  {waterAverages.pastEt !== null
+                    ? fmtFeature(waterAverages.pastEt, "precipTotal", units)
+                    : "n/a"}
+                </td>
+                <td
+                  style={{
+                    color:
+                      waterAverages.pastBalance !== null
+                        ? balanceWording(waterAverages.pastBalance).colorVar
+                        : undefined,
+                  }}
+                >
+                  {waterAverages.pastBalance !== null ? (
+                    <>
+                      {Math.abs(convert(waterAverages.pastBalance, "precip", units)).toFixed(
+                        units === "imperial" ? 1 : 0
+                      )}
+                      <span style={{ fontSize: "0.72rem", marginLeft: 4 }}>
+                        {balanceWording(waterAverages.pastBalance).short.toLowerCase()}
+                      </span>
+                    </>
+                  ) : (
+                    "n/a"
+                  )}
+                </td>
+                <td className="future-start" style={{ fontWeight: 700 }}>
+                  {result.averages.next?.precipTotal != null
+                    ? fmtFeature(result.averages.next.precipTotal, "precipTotal", units)
+                    : "—"}
+                </td>
+                <td className="future">
+                  {result.averages.next?.tmaxMean != null
+                    ? fmtFeature(result.averages.next.tmaxMean, "tmaxMean", units)
+                    : "—"}
+                </td>
+                <td className="future">
+                  {waterAverages.nextEt !== null
+                    ? fmtFeature(waterAverages.nextEt, "precipTotal", units)
+                    : "n/a"}
+                </td>
+                <td
+                  className="future"
+                  style={{
+                    fontWeight: 700,
+                    color:
+                      waterAverages.nextBalance !== null
+                        ? balanceWording(waterAverages.nextBalance).colorVar
+                        : undefined,
+                  }}
+                >
+                  {waterAverages.nextBalance !== null ? (
+                    <>
+                      {Math.abs(convert(waterAverages.nextBalance, "precip", units)).toFixed(
+                        units === "imperial" ? 1 : 0
+                      )}
+                      <span style={{ fontSize: "0.72rem", marginLeft: 4, fontWeight: 500 }}>
+                        {balanceWording(waterAverages.nextBalance).short.toLowerCase()}
+                      </span>
+                    </>
+                  ) : (
+                    "n/a"
+                  )}
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

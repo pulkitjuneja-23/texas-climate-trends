@@ -106,7 +106,7 @@ export const meta: SourceMeta = {
     "Abatzoglou, J.T. (2013). gridMET, Climatology Lab, University of Idaho.",
   url: "https://www.climatologylab.org/gridmet.html",
   available: true,
-  note: "4 km and only ~3 days behind. Built on PRISM, so it is the practical way to get PRISM-grade resolution for a point. Loads in yearly chunks, so the first load for a new spot takes a few seconds.",
+  note: "The best detail here — 4 km, only ~3 days behind, built on PRISM. But the first look at a new spot takes 1–2 minutes, because the data has to be fetched a year at a time. Every later visit to that spot is instant.",
 };
 
 function latIndex(lat: number): number {

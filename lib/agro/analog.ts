@@ -125,6 +125,27 @@ export interface AnalogMatch {
   coverage: number;
 }
 
+/**
+ * The long-run average across EVERY eligible year, not just the close matches.
+ *
+ * This is the baseline a grower needs in order to read the matches at all. "The
+ * five similar years gave 0.5 to 8.6 in afterwards" means little until you know
+ * a typical year gives 4 in. Averaged over all candidates rather than the top
+ * five, because the point is what is normal, not what is similar.
+ */
+export interface AnalogAverages {
+  /** How many years went into these means. */
+  years: number;
+  features: AnalogFeatures;
+  next: {
+    days: number;
+    precipTotal: number | null;
+    tmaxMean: number | null;
+    gddTotal: number | null;
+    years: number;
+  } | null;
+}
+
 export interface AnalogResult {
   asOf: string;
   windowStart: string;
@@ -133,6 +154,10 @@ export interface AnalogResult {
   currentFeatures: AnalogFeatures;
   currentCoverage: number;
   matches: AnalogMatch[];
+  /** Every year eligible for matching — the panel averages water over these. */
+  candidateYears: number[];
+  /** Long-run means across all candidate years. */
+  averages: AnalogAverages | null;
   /** Years dropped for having too few observations in the window. */
   skippedYears: number[];
   lookAheadDays: number;
@@ -355,6 +380,8 @@ export function findAnalogYears(
       currentFeatures: current.features,
       currentCoverage: current.coverage,
       matches: [],
+      candidateYears: [],
+      averages: null,
       skippedYears,
       lookAheadDays,
     };
@@ -486,6 +513,35 @@ export function findAnalogYears(
     s.similarity = Math.round((1 - (s.distance - dMin) / span) * 100);
   }
 
+  // Long-run means over EVERY candidate, computed before the top-N cut.
+  const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
+
+  const avgFeatures = {} as AnalogFeatures;
+  for (const k of FEATURE_KEYS) {
+    avgFeatures[k] = mean(candidates.map((c) => c.f.features[k]));
+  }
+
+  const nexts = scored.map((s) => s.whatHappenedNext).filter((n): n is WhatHappenedNext => !!n);
+  const averages: AnalogAverages = {
+    years: candidates.length,
+    features: avgFeatures,
+    next: nexts.length
+      ? {
+          days: lookAheadDays,
+          precipTotal: mean(
+            nexts.map((n) => n.precipTotal).filter((v): v is number => typeof v === "number")
+          ),
+          tmaxMean: mean(
+            nexts.map((n) => n.tmaxMean).filter((v): v is number => typeof v === "number")
+          ),
+          gddTotal: mean(
+            nexts.map((n) => n.gddTotal).filter((v): v is number => typeof v === "number")
+          ),
+          years: nexts.length,
+        }
+      : null,
+  };
+
   return {
     asOf,
     windowStart,
@@ -494,6 +550,8 @@ export function findAnalogYears(
     currentFeatures: current.features,
     currentCoverage: current.coverage,
     matches: scored.slice(0, topN),
+    candidateYears: candidates.map((c) => c.year),
+    averages,
     skippedYears,
     lookAheadDays,
   };

@@ -39,6 +39,7 @@ export type Field =
   | "tmean"
   | "precip"
   | "gdd"
+  | "dtr"
   | "et"
   | "balance"
   | "eto";
@@ -64,6 +65,18 @@ export interface YearSeries {
 
 function valueOf(r: DailyRecord, field: Field, gddCfg: GddConfig): number | null {
   if (field === "gdd") return dailyGdd(r.tmax, r.tmin, gddCfg);
+  /**
+   * Day-night swing (diurnal temperature range). Derived, not stored — it is
+   * simply Tmax - Tmin, and keeping it derived means it works for every source
+   * automatically. It is a DIFFERENCE, so it must be rendered with the
+   * `tempDelta` quantity: converting it as an absolute temperature would add
+   * 32 and turn a 12 degC swing into "53 degF".
+   */
+  if (field === "dtr") {
+    if (r.tmax === null || r.tmin === null) return null;
+    if (!Number.isFinite(r.tmax) || !Number.isFinite(r.tmin)) return null;
+    return r.tmax - r.tmin;
+  }
   const v = r[field];
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
