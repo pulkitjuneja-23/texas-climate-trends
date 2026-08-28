@@ -14,10 +14,16 @@ You don't want to do that by hand every morning. So there are **two automatic jo
 
 | Job | When | What it does |
 |---|---|---|
-| **Refresh** | Every day, ~4:20am Texas time | Adds the newest few days |
+| **Refresh** | Every day, ~4:20am Texas time | Adds the newest few days of weather |
 | **Rollover** | Once a year, 2 February | Files the finished year away permanently |
+| **Crop yields** | Four times a year, 5 Jan/Apr/Jul/Oct | Re-pulls county harvest figures from USDA |
 
 They run on GitHub's computers, not yours. Your laptop can be closed.
+
+The crop-yield job is quarterly because USDA publishes county figures once, months after harvest —
+there is nothing new to fetch most weeks. It is also why the site keeps its own copy of that data:
+USDA's service is not reliably up, and nobody loading the page should ever wait on it. If a
+quarterly run fails, the previous copy carries on serving and the job simply tries again.
 
 ---
 
@@ -45,6 +51,7 @@ copy each one after the `=` sign.
 | `R2_SECRET_ACCESS_KEY` | `.env.local`, the line starting `R2_SECRET_ACCESS_KEY=` |
 | `R2_BUCKET` | `.env.local`, the line starting `R2_BUCKET=` |
 | `NEXT_PUBLIC_R2_URL` | `.env.local`, the line starting `NEXT_PUBLIC_R2_URL=` |
+| `NASS_API` | `.env.local`, the line starting `NASS_API=` (the USDA crop-yield key) |
 
 > **Careful with copy and paste.** Take everything after the `=` and nothing else — no spaces at
 > either end, no quote marks. A stray space is the single most common cause of these jobs
@@ -77,6 +84,9 @@ Nothing. But here are the real numbers, because "free tier" always has a ceiling
 | Cloudflare uploads | ~41,700 | 1,000,000 | **96% spare** |
 | Cloudflare storage | 1.4 GB | 10 GB | 86% spare |
 | GitHub minutes | ~75 | 2,000 | 96% spare |
+
+The crop-yield data does not move any of those numbers: the whole Texas record — every county, ten
+crops, thirty years — is about 600 KB in two files, replaced eight times a year.
 
 Storage does not grow day by day — each refresh writes over the same files rather than adding
 new ones. The only thing that grows is the once-a-year rollover, by about 45 MB a year.

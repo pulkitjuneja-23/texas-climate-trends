@@ -20,6 +20,8 @@ import {
 import { convert, unitLabel, type UnitSystem } from "@/lib/agro/units";
 import { monthlyEtToDaily, attachWaterFields, balanceWording } from "@/lib/agro/water";
 import type { MonthlyEt } from "@/lib/sources/openet";
+// The TYPE only — `lib/yield/read` touches process.env and must stay server-side.
+import type { CountyYields } from "@/lib/yield/types";
 import LocationPicker from "@/components/LocationPicker";
 import SourceSelect from "@/components/SourceSelect";
 import ClimateChart, { type ViewMode } from "@/components/ClimateChart";
@@ -240,6 +242,9 @@ export default function Page() {
   const needsReference = field === "eto" || trendField === "eto";
   const [refLoaded, setRefLoaded] = useState(false);
 
+  const [yields, setYields] = useState<CountyYields | null>(null);
+  const [yieldsLoading, setYieldsLoading] = useState(false);
+
   // A new location invalidates whatever reference data we were holding.
   useEffect(() => {
     setRefLoaded(false);
@@ -274,6 +279,28 @@ export default function Page() {
 
     return () => ctrl.abort();
   }, [place.lat, place.lon, urlReady, needsReference, refLoaded]);
+
+  /**
+   * ---- county crop yields (NASS) ----
+   *
+   * Served entirely from our own quarterly copy, so this never waits on USDA.
+   * It is one extra column on a panel that works without it, so every failure
+   * just clears it rather than surfacing an error.
+   */
+  useEffect(() => {
+    if (!urlReady) return;
+
+    const ctrl = new AbortController();
+    setYieldsLoading(true);
+
+    fetch(`/api/yield?lat=${place.lat}&lon=${place.lon}`, { signal: ctrl.signal })
+      .then((r) => r.json())
+      .then((json) => setYields(json?.available ? (json as CountyYields) : null))
+      .catch(() => setYields(null))
+      .finally(() => setYieldsLoading(false));
+
+    return () => ctrl.abort();
+  }, [place.lat, place.lon, urlReady]);
 
   /** Monthly OpenET spread across days so it lines up with the daily series. */
   const dailyEt = useMemo(() => {
@@ -912,6 +939,8 @@ export default function Page() {
               lastObserved={history?.lastObserved ?? null}
               dailyEt={dailyEt}
               waterLoading={waterLoading}
+              yields={yields}
+              yieldsLoading={yieldsLoading}
               onCompareYears={(ys) => {
                 setCompareYears(ys.slice(0, 4));
                 document.querySelector(".card")?.scrollIntoView({ behavior: "smooth" });

@@ -1,0 +1,70 @@
+# Refresh the county crop-yield store from USDA NASS.
+#
+# WHY QUARTERLY. NASS publishes county yield estimates once, months after
+# harvest — there is nothing new to fetch most weeks. Four runs a year is
+# comfortably more often than the data changes.
+#
+# WHY WE HOST IT AT ALL. The website never calls NASS. Quick Stats is not
+# reliably up, and a farmer loading a page should not be exposed to that. The
+# whole Texas record is ~33,000 numbers (~600 KB across two files), so it is
+# pulled here, reshaped, and served as static JSON from R2.
+#
+# A FAILED RUN CHANGES NOTHING. The previously published files keep serving
+# until a later run succeeds, so an outage at USDA costs a delay, never a
+# regression. That is the entire point of the arrangement.
+#
+# COST: 2 uploads per run, 8 a year. Against Cloudflare's free 1,000,000 a
+# month this does not register.
+#
+# The county boundary index is NOT rebuilt by default: county lines do not move,
+# and rebuilding it would make this job depend on the Census service being up
+# for no gain. Use the manual trigger with "rebuild-counties" if it is ever lost.
+
+name: Refresh NASS crop yields (quarterly)
+
+on:
+  schedule:
+    # 05:40 UTC on the 5th of January, April, July and October. Off the hour
+    # because GitHub queues the flood of jobs scheduled at :00.
+    - cron: "40 5 5 1,4,7,10 *"
+  workflow_dispatch:
+    inputs:
+      rebuild-counties:
+        description: "Also rebuild the county boundary index from Census TIGERweb"
+        type: boolean
+        default: false
+
+concurrency:
+  group: nass-yield
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Rebuild the yield store
+        env:
+          NASS_API: ${{ secrets.NASS_API }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          node --experimental-strip-types scripts/ingest-nass.mts --r2 \
+            ${{ inputs.rebuild-counties && ' ' || '--skip-counties' }}
+
+      # A store that published but says the wrong thing is worse than a failed
+      # run, because nothing downstream can tell. Check it end to end against
+      # the live bucket before calling this a success.
+      - name: Verify the published store
+        env:
+          NEXT_PUBLIC_R2_URL: ${{ secrets.NEXT_PUBLIC_R2_URL }}
+        run: node --experimental-strip-types scripts/verify-nass.mts --r2

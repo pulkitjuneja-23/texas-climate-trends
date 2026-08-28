@@ -12,6 +12,11 @@ import {
 import type { GddConfig } from "@/lib/agro/gdd";
 import { convert, type Quantity, type UnitSystem, unitLabel } from "@/lib/agro/units";
 import { waterBalanceForWindow, balanceWording, type WaterWindow } from "@/lib/agro/water";
+// Both of these modules are pure data and maths with no imports of their own,
+// so a client component may use them; the reader that touches process.env
+// stays on the server.
+import { percentOfTrend, yieldAt, type CountyYields } from "@/lib/yield/types";
+import { PRACTICE_LABELS, PRACTICE_HELP, type PracticeId } from "@/lib/yield/crops";
 
 /**
  * "Which past year is this one tracking like?"
@@ -50,6 +55,9 @@ interface Props {
   /** Daily ET (mm) keyed YYYY-MM-DD, spread from OpenET's monthly values. */
   dailyEt?: Map<string, number>;
   waterLoading?: boolean;
+  /** County crop yields from NASS, or null outside Texas / with no figures. */
+  yields?: CountyYields | null;
+  yieldsLoading?: boolean;
 }
 
 /** Shift an ISO date by whole days. */
@@ -103,9 +111,41 @@ export default function AnalogPanel({
   onCompareYears,
   dailyEt,
   waterLoading = false,
+  yields = null,
+  yieldsLoading = false,
 }: Props) {
   const [windowDays, setWindowDays] = useState(150);
   const [lookAhead, setLookAhead] = useState(60);
+  const [cropId, setCropId] = useState<string | null>(null);
+  const [practice, setPractice] = useState<PracticeId>("all");
+
+  /**
+   * Which crop the column shows.
+   *
+   * Falls back to the county's first available crop rather than a fixed
+   * default, because the store already orders crops by Texas importance and a
+   * county that does not grow the default would otherwise open on an empty
+   * column. Re-resolved on every render so changing location to a county
+   * without the selected crop recovers instead of showing blanks.
+   */
+  const crop =
+    yields?.crops.find((c) => c.id === cropId) ?? yields?.crops[0] ?? null;
+
+  /**
+   * The chosen practice, or the best available one for this crop.
+   *
+   * Only six of the ten crops publish an irrigated/dryland split at all, so a
+   * sticky "Dryland" selection would blank the column the moment the farmer
+   * switched to oats. Fall back rather than show nothing.
+   */
+  const activePractice: PracticeId =
+    crop && crop.practices.includes(practice)
+      ? practice
+      : ((crop?.practices[0] as PracticeId) ?? "all");
+
+  const cropData = crop ? yields?.data[crop.id] : undefined;
+  const series = cropData?.series[activePractice];
+  const trend = cropData?.trend[activePractice];
 
   const result = useMemo(() => {
     try {
@@ -223,6 +263,60 @@ export default function AnalogPanel({
       color: wording.colorVar,
     };
   }
+  /**
+   * The yield cell for one analog year.
+   *
+   * BOTH numbers, deliberately. Raw yield across thirty years is dominated by
+   * genetics and agronomy rather than weather — Texas corn has gone from ~100
+   * to ~150 bu/ac — so a 1998 analog would read as a catastrophe beside 2023
+   * even if it was a good season for its time. The percentage answers the
+   * question the panel actually asks: in years whose weather looked like this
+   * one, did the crop do well or badly *for that era*.
+   */
+  // Hoisted because control-flow narrowing of `result` does not reach inside a
+  // closure declared after the early return.
+  const currentYear = result.currentYear;
+
+  function yieldCell(year: number) {
+    if (yieldsLoading) return <span className="muted">…</span>;
+    if (!crop || !series) return <span className="muted">n/a</span>;
+
+    const v = yieldAt(series, year);
+    // NASS publishes a county yield the spring after harvest, so the year in
+    // progress legitimately has none. Say "not yet", not "no data" — they mean
+    // different things and only one of them is a gap in the record.
+    if (v === null) {
+      return <span className="muted">{year >= currentYear ? "not yet" : "—"}</span>;
+    }
+
+    const pct = percentOfTrend(trend, year, v);
+    return (
+      <>
+        <span style={{ fontWeight: 650 }}>{v.toFixed(crop.decimals)}</span>
+        {pct !== null && (
+          <span
+            title={
+              trend?.borrowed
+                ? "Compared against the statewide rate of improvement for this crop, " +
+                  "anchored to this county's own average — this county has too few " +
+                  "reported years to fit its own trend."
+                : `Compared against this county's own fitted trend (${trend?.n} years).`
+            }
+            style={{
+              fontSize: "0.72rem",
+              marginLeft: 5,
+              fontWeight: 500,
+              color: pct >= 100 ? "var(--div-cool)" : "var(--div-warm)",
+              borderBottom: trend?.borrowed ? "1px dotted currentColor" : undefined,
+            }}
+          >
+            {pct.toFixed(0)}%
+          </span>
+        )}
+      </>
+    );
+  }
+
   const nextRains = result.matches
     .map((m) => m.whatHappenedNext?.precipTotal)
     .filter((v): v is number => typeof v === "number");
@@ -256,6 +350,26 @@ export default function AnalogPanel({
             ))}
           </div>
         </div>
+        {/* Only offered when the county publishes a split — six of the ten
+            crops do. A toggle whose options blank the column is worse than no
+            toggle. */}
+        {crop && crop.practices.length > 1 && (
+          <div className="field">
+            <label>Yield from</label>
+            <div className="seg">
+              {(crop.practices as PracticeId[]).map((p) => (
+                <button
+                  key={p}
+                  aria-pressed={activePractice === p}
+                  title={PRACTICE_HELP[p]}
+                  onClick={() => setPractice(p)}
+                >
+                  {PRACTICE_LABELS[p]}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="field" style={{ marginLeft: "auto" }}>
           <label>&nbsp;</label>
           <button onClick={() => onCompareYears(result.matches.slice(0, 4).map((m) => m.year))}>
@@ -292,8 +406,13 @@ export default function AnalogPanel({
               <th colSpan={featureKeys.length + 2} className="grp-past">
                 Already happened &mdash; last {result.windowDays} days
               </th>
-              <th colSpan={4} className="grp-future">
+              <th colSpan={crop ? 5 : 4} className="grp-future">
                 What came next &mdash; the following {lookAhead} days
+                {crop && (
+                  <span style={{ fontWeight: 500, opacity: 0.8 }}>
+                    , and that year&rsquo;s harvest
+                  </span>
+                )}
               </th>
             </tr>
             <tr>
@@ -319,6 +438,25 @@ export default function AnalogPanel({
               >
                 Balance
               </th>
+              {crop && (
+                <th className="future yield-head">
+                  {/* The dropdown IS the heading, so the column names itself
+                      after whatever is being shown. Only crops this county
+                      actually reports are listed. */}
+                  <select
+                    aria-label="Crop"
+                    value={crop.id}
+                    onChange={(e) => setCropId(e.target.value)}
+                  >
+                    {yields!.crops.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="yield-unit">{crop.unitShort}</span>
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -346,7 +484,7 @@ export default function AnalogPanel({
                   </span>
                 )}
               </td>
-              <td className="future-start muted" colSpan={4} style={{ textAlign: "center" }}>
+              <td className="future-start muted" colSpan={crop ? 5 : 4} style={{ textAlign: "center" }}>
                 still to come
               </td>
             </tr>
@@ -405,6 +543,7 @@ export default function AnalogPanel({
                     </span>
                   )}
                 </td>
+                {crop && <td className="future">{yieldCell(m.year)}</td>}
               </tr>
             ))}
 
@@ -486,6 +625,37 @@ export default function AnalogPanel({
                     "n/a"
                   )}
                 </td>
+                {crop && (
+                  <td className="future">
+                    {/*
+                      NOT the mean of the analog years' yields. That average
+                      would span 1996-2025 and be dragged down by thirty years
+                      of older genetics — reintroducing exactly the bias the
+                      percentage column exists to remove. The honest baseline
+                      is what the trend expects TODAY: what a normal year yields
+                      now, which is the number a farmer can actually compare
+                      their own field against.
+                    */}
+                    {trend ? (
+                      <span
+                        title={
+                          `What a normal year yields now, from the fitted trend. ` +
+                          `Not an average of the years above — those span three decades ` +
+                          `of changing genetics.`
+                        }
+                      >
+                        {(trend.intercept + trend.slope * result.currentYear).toFixed(
+                          crop.decimals
+                        )}
+                        <span className="muted" style={{ fontSize: "0.72rem", marginLeft: 5 }}>
+                          now
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="muted">n/a</span>
+                    )}
+                  </td>
+                )}
               </tr>
             )}
           </tbody>
@@ -497,6 +667,16 @@ export default function AnalogPanel({
         each other, it is not a probability. Small grey numbers are that year minus this year.
         {result.skippedYears.length > 0 && (
           <> Years skipped for sparse data: {result.skippedYears.join(", ")}.</>
+        )}
+        {crop && (
+          <>
+            {" "}
+            <strong>{crop.label}</strong> yield is the average across all of{" "}
+            <strong>{yields!.county.name} County</strong> — a much coarser thing than the weather
+            columns beside it, which come from the grid cell containing your pin. The percentage is
+            that year against the long-term trend, because thirty years of better genetics would
+            otherwise make every old year look like a failure. {yields!.attribution}.
+          </>
         )}
       </div>
     </div>

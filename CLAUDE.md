@@ -1073,6 +1073,87 @@ slowly and with no cache, and nothing says why. It now merges: existing keys are
 missing ones appended, everything else left alone. Verified against a stand-in file (4 unrelated
 settings preserved, comment kept). **A setup script must never destroy other setup.**
 
+### 2026-08-27 — Crop yield in the analog table (USDA NASS)
+
+User request: a final column in "Which year is this one tracking like?" showing county crop yield,
+so a grower can see what the harvest actually did in the years whose weather matched. Column heading
+is the **crop dropdown itself** (user's specification), practice toggle beside the other controls.
+
+**Hosted, not called live.** The user asked whether we could host it "like gridMET" because NASS is
+sometimes down. Yes — and it is ~1,500x smaller: **two JSON files, 601 KB total, 2 uploads a
+quarter**, against gridMET's 1.39 GB / 20,820 objects / ~41,700 uploads a month. This is NOT the
+archive pattern; do not reach for chunking. **The site never calls NASS**, so Quick Stats outages
+cannot reach a page load, and a failed refresh leaves the previous files serving.
+
+`NASS_API` (free key, quickstats.nass.usda.gov/api) is the second service needing a secret after
+Earth Engine. It is used ONLY by the ingest — never the website, never the browser.
+
+#### THE THING THAT WOULD HAVE MADE THIS COLUMN A LIE
+
+Raw yield over thirty years is dominated by genetics and agronomy, not weather. Measured statewide
+from the real record: **cotton +1.57%/yr (r² 0.51), rice +1.25% (r² 0.74), wheat +1.00%, corn
++0.60%**. Drop raw bushels into the table and 1998 reads as a catastrophe beside 2023 — when it may
+have been a good season *for its time*. Every cell therefore carries **both** the actual yield and
+that yield as a **% of the fitted trend for its year**. At Bell County: 1998 corn 29.5 bu/ac = 47%
+of trend, 2011 33.0 = 42%, 2019 105.8 = 119%. The percentage is what answers the question the panel
+asks.
+
+Same trap in the **"Typical year" row**: averaging the analog years' raw yields spans three decades
+of changing genetics and would reintroduce exactly that bias. It shows the **trend value at the
+current year** instead — what a normal year yields *now*.
+
+#### NASS PUBLISHES OVERLAPPING SERIES — MERGING THEM DOUBLE-COUNTS
+
+Measured against all 32,819 Texas county-year records, not inferred from docs. `lib/yield/crops.ts`
+is the single definition:
+
+| Trap | What the data showed |
+|---|---|
+| WHEAT | `ALL CLASSES` (1996-2007) and `WINTER` (1996-2025) — **all 1,927** ALL CLASSES county-years also appear as WINTER. WINTER is a strict superset. |
+| CORN | grain BU/ACRE and silage TONS/ACRE share county-years. Different harvests, different units. Grain only; silage has 14 county-years statewide. |
+| COTTON | UPLAND 2,988 county-years; PIMA 61, of which **56 duplicate** an UPLAND one. |
+| SUNFLOWER | three variants (all/oil/non-oil) with heavy mutual overlap. Deterministic rank order, never summed. |
+| **practice** | `NON-IRRIGATED, CONTINUOUS CROP` and `...FOLLOWING SUMMER FALLOW` — **470 rows, every single one duplicating a plain NON-IRRIGATED county-year.** Exact-match the three practices; drop the rest. |
+
+Also: NASS **omits** suppressed rows rather than flagging them — 0 of 32,819 values were non-numeric.
+So absent means absent. County codes >= 998 are "combined counties" aggregates, not places, and must
+never be matched to a point.
+
+#### The statewide-rate fallback
+
+Only 54% of all-practice series and **31% of dryland** series clear 12 years — so a strict own-trend
+rule left the irrigated/dryland toggle the user asked for showing mostly blanks. Fixed by a real
+distinction: **the rate of improvement is statewide** (genetics, agronomy) while **the level is
+local** (soil, rainfall). Fit the rate once across Texas, anchor it to each county's own average.
+Coverage went **43% -> 65%** (all 73%, dry 59%, irr 53%). Borrowed trends carry `borrowed: true` and
+the UI marks them with a dotted underline plus an explanation on hover — it is an assumption, not a
+measurement.
+
+#### County lookup: simplified polygons, not a raster
+
+Census TIGERweb GeoJSON, no key. 23.6 MB of full-resolution geometry -> **243 KB at 0.003° (2.0% of
+vertices)**. Verified **12/12 against the FCC block service** at points across Texas, and correctly
+returns **null** outside the state — a field in New Mexico is not "nearly Hudspeth".
+
+Rejected the obvious alternative of precomputing a county per gridMET cell (83 KB, array index):
+**a 4 km cell straddling a county line puts a real field in the wrong county and the error is
+invisible** — the farmer gets a confident yield from next door. Polygons are the same size and
+decouple this from the weather grid.
+
+#### Honesty rules carried over
+
+- The note under the table states plainly that yield is a **county average** against weather matched
+  at the grid cell containing the pin — a much coarser thing than the columns beside it.
+- The in-progress year reads **"not yet"**, not "—". NASS publishes a county yield the spring after
+  harvest; a pending harvest is not a gap in the record.
+- Crops a county never reports are absent from the dropdown; a practice toggle is only offered when
+  that crop publishes the split (6 of 10 do).
+
+Quarterly refresh in `.github/workflows/nass-refresh.yml`, verified end to end by
+`scripts/verify-nass.mts`, which **fails the run** if the default location has no crops, if fewer
+than 150 counties are present, or if a boundary check disagrees. The FCC cross-check is *skipped*
+rather than failed when unreachable — someone else's outage must not mark our data bad.
+
 ## Next up
 
 Items 1, 4 and 7 of the original list are done (gridMET as a source, OpenET, shipped to Vercel).

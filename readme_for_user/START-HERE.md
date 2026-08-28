@@ -194,6 +194,38 @@ That last column is the useful part. If those years all went the same way afterw
 something. If they scattered wildly, that means something too — and the box says so in plain words
 at the top. It is **not** a forecast.
 
+**The crop column, at the far right.** The heading itself is a dropdown — pick your crop and the
+column shows what that crop actually yielded, in your county, in each of those matched years. Only
+crops your county actually grows are listed, so the choices change as you move the pin.
+
+Each cell shows **two numbers**, and the second one is the important one:
+
+> **395** lb/ac &nbsp;&nbsp; **56%**
+
+The first is what the county averaged that year. The second is that yield compared to **the trend
+for that year** — and you need it, because yields have been climbing for thirty years for reasons
+that have nothing to do with weather. Better seed, better equipment, better practice. Texas cotton
+has improved about 1.6% a year, every year.
+
+Without that second number a good season in 1998 would look like a disaster next to an ordinary one
+in 2023, purely because of the seed available at the time. **Above 100% means that year beat what
+was normal for its era; below means it fell short.** Blue is above, red is below.
+
+Two more things about this column:
+
+- **Where there is a "Yield from" switch**, you can choose irrigated acres, dryland acres, or both
+  together. Take dryland if you have it — those are the acres the weather actually decides, and it
+  is the honest comparison against a dry year. Only about half the crops publish the split.
+- **This is a whole-county average**, which is much coarser than everything to its left. The rain
+  and temperature columns come from the 4 km square containing your pin; the yield is every farm in
+  the county, on every soil, planted on every date. Read it as "how did this crop go around here
+  that year", not as a prediction for your field.
+- A **dotted underline** under the percentage means your county reports too few years to work out
+  its own trend, so the statewide rate was used instead, set to your county's own average level.
+  Hover to see it.
+
+The current year says **"not yet"** — the figures are published the spring after harvest.
+
 **6. Next month prediction** — the forecast
 Three levels, deliberately kept apart because they are not equally trustworthy:
 - **Days 1–7** from the National Weather Service. Trust this.

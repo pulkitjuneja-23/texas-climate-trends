@@ -784,6 +784,57 @@ tbody tr:last-child td {
   background: color-mix(in srgb, var(--series-1) 10%, transparent);
 }
 
+/*
+  The crop column names itself.
+
+  The dropdown IS the heading rather than sitting in the controls row above,
+  because the column shows one crop at a time and the heading has to say which.
+  Styled to read as a header first and a control second: no border until it is
+  hovered, so it does not shout across a table that is already dense.
+*/
+.analog-table th.yield-head {
+  padding-top: 3px;
+  padding-bottom: 3px;
+  min-width: 118px;
+}
+
+.analog-table th.yield-head select {
+  font: inherit;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--text-primary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 2px 18px 2px 4px;
+  margin: 0;
+  width: 100%;
+  cursor: pointer;
+  /* The native arrow is drawn small and grey; a own one reads at this size. */
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: right 8px top 55%, right 4px top 55%;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+}
+
+.analog-table th.yield-head select:hover,
+.analog-table th.yield-head select:focus-visible {
+  border-color: var(--border-strong);
+  background-color: var(--surface);
+}
+
+.analog-table th.yield-head .yield-unit {
+  display: block;
+  padding-left: 5px;
+  font-size: 0.6rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
 /* The long-run baseline: set apart from the matched years above it. */
 .analog-table .avg-row td {
   border-top: 2px solid var(--border-strong);
