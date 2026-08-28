@@ -1026,6 +1026,53 @@ it ends by publishing a clean manifest, which would turn a half-rewritten archiv
   `noEmit` is set; the scripts import each other with explicit `.ts` extensions because Node's type
   stripping runs them with no bundler to resolve extensionless paths).
 
+### 2026-08-27 — Going public: history audited, one landmine fixed
+
+The user intends to **make the repo public once it is finalised**. Two things change, and the
+history was audited before either.
+
+**SECRET AUDIT — history is clean.** All 15 commits scanned, both by path and by content:
+- `.env.local` and `earthengine-key.json` have **never** been committed. 107 distinct paths have
+  existed in history; the only sensitive-sounding one is `install-key.ps1`, which contains no key
+  material — it reads and copies a file.
+- No PEM private-key header, no service-account key id field, no `eyJhbGciOi` JWT prefix anywhere.
+  (Those first two patterns are deliberately NOT spelled out literally here: `.githooks/pre-commit`
+  greps the staged diff for them, so writing them out blocks the commit that documents the audit.
+  That is the hook working — do not weaken it to allow prose about keys, because that is precisely
+  the gap a real key would later slip through. Describe the pattern, never reproduce it.)
+- Three values from `.env.local` DO appear in history and all three are **non-secret**:
+  `R2_BUCKET` = `texas-climate-data` (a bucket name, documented on purpose), `GEE_PROJECT_ID` =
+  `texas-climate-trends` (identical to the repo name, hence hits in `package.json` and
+  `package-lock.json`), and `GEE_KEY_FILE` = `./earthengine-key.json` (a path, in the setup docs by
+  design). The `sb_secret_` / `service_role` hits are documentation showing the prefix with `...`
+  placeholders.
+
+**The audit's one real limit:** it compares against the values CURRENTLY in `.env.local`. A
+credential that was rotated at some point could have an OLD value sitting in history that this
+would not catch. Nothing suggests that happened, but re-run the scan if any key is ever rotated
+before publishing.
+
+**THE 60-DAY RULE WILL THEN APPLY.** It is scoped to public repositories, so going public turns a
+non-issue into a real one — and precisely when it bites: a *finalised* project stops receiving
+commits, which is exactly the condition that disables the schedule. Any push resets the 60-day
+clock. A keepalive is not yet built; note that a commit authored by `GITHUB_TOKEN` is widely
+reported NOT to count as repository activity, so a keepalive needs a PAT-authored commit or an
+equivalent.
+
+**Going public is a benefit for Actions minutes:** public repositories get GitHub-hosted runners
+free and unmetered, so the ~75 min/month the refresh costs stops counting against anything.
+
+**No `LICENSE` file.** A public repo without one is "all rights reserved" — nobody may legally
+reuse or cite it. Decide before publishing, not after.
+
+**`install-key.ps1` OVERWROTE `.env.local` — fixed.** It rebuilt the file from scratch with only
+the two `GEE_*` lines. That was harmless when Earth Engine was the only thing needing settings;
+it is not now that the same file holds the R2 and Supabase entries. Re-running it would have
+silently deleted them, and the failure is quiet in the worst way — the site keeps working, just
+slowly and with no cache, and nothing says why. It now merges: existing keys are updated in place,
+missing ones appended, everything else left alone. Verified against a stand-in file (4 unrelated
+settings preserved, comment kept). **A setup script must never destroy other setup.**
+
 ## Next up
 
 Items 1, 4 and 7 of the original list are done (gridMET as a source, OpenET, shipped to Vercel).

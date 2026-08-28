@@ -82,11 +82,33 @@ $projectId = $key.project_id
 
 Copy-Item -LiteralPath $found -Destination $dest -Force
 
-$envText = @"
-GEE_PROJECT_ID=$projectId
-GEE_KEY_FILE=./earthengine-key.json
-"@
-Set-Content -LiteralPath $envFile -Value $envText -Encoding ascii
+# MERGE into .env.local, never overwrite it.
+#
+# This script used to replace the whole file. That was harmless when Earth
+# Engine was the only thing needing settings, but .env.local now also holds the
+# Cloudflare R2 and Supabase entries. Overwriting it would silently delete them:
+# the site would keep working, just slowly and without a cache, and nothing
+# would say why. Re-running a setup script must never destroy other setup.
+$settings = [ordered]@{
+    GEE_PROJECT_ID = $projectId
+    GEE_KEY_FILE   = "./earthengine-key.json"
+}
+
+$lines = if (Test-Path $envFile) { @(Get-Content -LiteralPath $envFile) } else { @() }
+foreach ($name in $settings.Keys) {
+    $replaced = $false
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match "^\s*$name\s*=") {
+            $lines[$i] = "$name=$($settings[$name])"
+            $replaced = $true
+            break
+        }
+    }
+    if (-not $replaced) { $lines += "$name=$($settings[$name])" }
+}
+$kept = ($lines | Where-Object { $_ -match '^\s*[A-Za-z_][A-Za-z0-9_]*\s*=' }).Count - $settings.Count
+
+Set-Content -LiteralPath $envFile -Value $lines -Encoding ascii
 
 Write-Host ""
 Write-Host "Installed." -ForegroundColor Green
@@ -94,6 +116,9 @@ Write-Host "  key file    : earthengine-key.json"
 Write-Host "  .env.local  : written"
 Write-Host "  project id  : $projectId"
 Write-Host "  account     : $($key.client_email)"
+if ($kept -gt 0) {
+    Write-Host "  kept        : $kept other setting(s) already in .env.local, untouched"
+}
 Write-Host ""
 Write-Host "Both files are git-ignored, so they will not be uploaded anywhere." -ForegroundColor Cyan
 Write-Host ""
