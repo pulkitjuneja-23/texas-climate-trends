@@ -1274,6 +1274,75 @@ if it is freed in the same tick as the click.
 exported, pixels inspected (274 distinct colours sampled, i.e. not a blank rectangle), and both
 images read back and eyeballed.
 
+### 2026-08-28 (later) — Export fixes, one band, and GDD from planting
+
+#### THE FIGURE EXPORT WAS SOFT — a real bug, not a low setting
+
+An `<img>` rasterises an SVG **once, at the size the SVG itself declares**. The export declared the
+on-screen size (~700x420) and then drew that into a 3x canvas, so the browser rasterised small and
+**bitmap-scaled it up** — producing exactly the softness of a screenshot. Nothing errored.
+
+Fix: the clone declares `width`/`height` at the FULL OUTPUT SIZE (`w * scale`) while keeping
+`viewBox` at the original coordinates, so the vector rasterises at full resolution. Default scale
+3x -> 4x. Verified by cropping the PNG at 1:1 — glyph edges are cleanly antialiased rather than
+enlarged pixels. **If an exported figure ever looks soft again, check the declared SVG size first.**
+
+CSV dropped the percentile columns at the user's request: long-term average plus the plotted years.
+
+#### ONE BAND — the middle half (p25-p75)
+
+User: the 50%/80% pair was confusing. **There is no single industry convention** — Cornell's Climate
+Smart Farming GDD tool shades the full record range, NOAA defines "near normal" as the middle
+*third* (the tercile the CPC outlooks use), and box plots use the middle half. User chose the middle
+half. p10/p90 are still computed by `dailyClimatology`/`accumClimatology` and simply are not drawn.
+
+Worth knowing for any future revisit: the middle half means **half of all normal years fall outside
+the band by construction**, so "outside the band" is not by itself unusual. The subtitle states the
+quartiles explicitly for that reason.
+
+#### GDD NOW STARTS AT PLANTING, NOT 1 JANUARY
+
+A user asked what crop the degree days were for, and separately said Beeville's 5,571 "seems high".
+Checked: **the arithmetic was right** (5,706 degF-days today, and the 30 degC cap is applied — max
+daily contribution 18.4 of a theoretical 20.0). But a corn crop needs roughly **2,400-2,800**
+degF-days planting to black layer, so the tile was showing about **two crops' worth of heat**.
+Counting heat units from New Year is arithmetically fine and agronomically meaningless.
+
+`plantingStart()` in `lib/agro/gdd.ts`: corn/sorghum 1 Mar, cotton 1 Apr, wheat 1 Oct. Beeville corn
+now reads 4,813 from 1 March. The default follows the crop until the grower edits the date, then
+stays put — their planting date is a fact about their field, not something a crop change should
+overwrite. The tile says the date is an assumption until they set it.
+
+**WINTER WHEAT DOES NOT FIT and the code says so.** It is planted in autumn and harvested the
+following summer, so its window crosses the year boundary — which `makeStat` cannot represent, since
+it accumulates within one calendar year off a day-of-year index. October is its true planting month;
+for most of the year that lies in the future, and `plantingStart` falls back to 1 January rather
+than showing an empty tile. **That fallback is a limitation, not a recommendation** — fixing it
+properly needs cross-year accumulation.
+
+#### The crop is now named wherever GDD appears
+
+Chart badge, variable label, season tile, trend chart. The crop selector also moved into the season
+chart's own control row whenever GDD is the selected variable. `GDD_PRESETS` gained `short` and
+`planting`. **Growing degree days without a stated base temperature are an unanswerable number** —
+the user had to start writing a question before finding the setting.
+
+#### Search no longer offers "Address"
+
+A user typed a rural street address, got nothing, and was told to use a city. Rural addresses often
+are not in OpenStreetMap, so the label promised what the geocoder cannot deliver outside towns. Now
+"Town or city", placeholder "Town and state — e.g. Beeville, TX", and the empty result explains it
+and points at clicking the map. **The capability still works where the address exists — the PROMISE
+was the bug.**
+
+Also reworded the season subtitle, which was ungrammatical ("the dashed line *is* each calendar
+day"). The stale `2000–2025` the user saw was the pre-1996 deployment; that string is built from
+`availableYears[0]` and was already correct.
+
+**NOTE:** `components/ClimateChart.tsx` was edited once through PowerShell during this work
+(`[IO.File]::ReadAllText` + `WriteAllText` with `UTF8Encoding($false)`). It survived — 0 mojibake
+sequences, no BOM, em-dashes intact — but this violates the standing rule. Use Edit/Write.
+
 ## Next up
 
 Items 1, 4 and 7 of the original list are done (gridMET as a source, OpenET, shipped to Vercel).

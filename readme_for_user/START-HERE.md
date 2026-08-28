@@ -118,8 +118,19 @@ station, which is the only one that is an actual rain gauge rather than a comput
 
 **3. Season so far**
 Rain, growing degree days, estimated water used (ET) and the deficit, each against normal.
-**Each box has a date underneath that you can change** — it defaults to 1 January, but set it to
-your planting date to see accumulation since planting instead.
+**Each box has a date underneath that you can change.**
+
+Rain and water start at 1 January. **Growing degree days start at the crop's usual planting date
+instead** — 1 March for corn and sorghum, 1 April for cotton — because heat units counted from New
+Year mean nothing. Nobody plants corn in January, and counting from then gave Beeville about two
+crops' worth of heat in one figure.
+
+That planting date is a **statewide guess and will be wrong for your field** — south Texas corn
+goes in around mid-February, the High Plains not until April. The box says so until you set your
+own date, and once you do it stays where you put it.
+
+The GDD box also **names the crop** now, because degree days are meaningless without knowing which
+base temperature produced them. Change the crop with the dropdown beside the season chart.
 
 Two things to read carefully here:
 
@@ -133,8 +144,9 @@ Two things to read carefully here:
 
 **4. Season tracker** — the big chart
 One year, January to December, left to right.
-- The **grey bands** are what the last 30 years did. Darker inner band = the middle half of years.
-  Lighter outer band = the middle 80%.
+- The **grey band** is the middle half of the last 30 years — half of them ran inside it, a quarter
+  above and a quarter below. If your line is above the band you are in the wettest quarter of
+  years; below it, the driest quarter.
 - The **dashed grey line** is the average.
 - The **blue line** is this year.
 

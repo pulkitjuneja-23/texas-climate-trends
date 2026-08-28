@@ -6,7 +6,7 @@ import type { DailyRecord, Place, SourceMeta, TaggedRecord } from "@/lib/types";
 // and the Earth Engine ones use Node APIs that cannot be bundled for a browser.
 import { DEFAULT_SOURCE_ID, HISTORY_START_YEAR, historyYears } from "@/lib/sources/defaults";
 import { DEFAULT_PLACE } from "@/lib/geo";
-import { GDD_PRESETS } from "@/lib/agro/gdd";
+import { GDD_PRESETS, plantingStart } from "@/lib/agro/gdd";
 import {
   alignByYear,
   accumulate,
@@ -130,7 +130,19 @@ export default function Page() {
   // "Since" dates for the season-to-date tiles. Default 1 Jan, but a grower
   // usually cares about accumulation since planting, not since New Year.
   const [rainSince, setRainSince] = useState(`${currentYear}-01-01`);
-  const [gddSince, setGddSince] = useState(`${currentYear}-01-01`);
+  /**
+   * GDD starts at the crop's planting date, not 1 January.
+   *
+   * Heat units counted from New Year are meaningless — at Beeville that read
+   * 5,706 degF-days for corn by late August, roughly two crops' worth. The
+   * default follows the selected crop until the grower sets their own date,
+   * after which it stays put: their planting date is a fact about their field,
+   * not something a crop change should overwrite.
+   */
+  const [gddSince, setGddSince] = useState(() =>
+    plantingStart("corn", currentYear, null)
+  );
+  const [gddSinceTouched, setGddSinceTouched] = useState(false);
   /** ET and deficit share one date — they are two halves of the same sum. */
   const [etSince, setEtSince] = useState(`${currentYear}-01-01`);
 
@@ -146,6 +158,19 @@ export default function Page() {
   const [waterLoading, setWaterLoading] = useState(true);
 
   const gddConfig = GDD_PRESETS[gddPreset].config;
+
+  /**
+   * Follow the crop's planting date until the grower overrides it.
+   *
+   * Also re-runs once `lastObserved` arrives, because a planting date in the
+   * future accumulates nothing — wheat's October date is ahead of most of the
+   * year and falls back to 1 January.
+   */
+  useEffect(() => {
+    if (gddSinceTouched) return;
+    const next = plantingStart(gddPreset, currentYear, history?.lastObserved ?? null);
+    setGddSince((prev) => (prev === next ? prev : next));
+  }, [gddPreset, currentYear, history?.lastObserved, gddSinceTouched]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -739,9 +764,26 @@ export default function Page() {
                         value={gddSince}
                         min={`${currentYear}-01-01`}
                         max={history?.lastObserved ?? `${currentYear}-12-31`}
-                        onChange={(e) => setGddSince(e.target.value)}
+                        onChange={(e) => {
+                          setGddSince(e.target.value);
+                          setGddSinceTouched(true);
+                        }}
                       />
                     </div>
+                    {/*
+                      Says the planting date is an ASSUMPTION. A statewide
+                      default is wrong for any specific field — south Texas corn
+                      goes in around mid-February, the High Plains not until
+                      April — and a number counted from a date the grower never
+                      chose should say so rather than look authoritative.
+                    */}
+                    {!gddSinceTouched && (
+                      <div className="small muted" style={{ marginTop: 4, lineHeight: 1.4 }}>
+                        {gddSince.endsWith("-01-01")
+                          ? "From 1 Jan — set your planting date for a figure that means something."
+                          : `Assumes ${GDD_PRESETS[gddPreset].short} planting — set your own date.`}
+                      </div>
+                    )}
                   </div>
 
                   <div className="tile">

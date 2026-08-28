@@ -171,7 +171,7 @@ interface Props {
 interface Row {
   key: string;
   label: string;
-  band90?: [number, number];
+  /** 25th-75th percentile — the only band drawn. */
   band50?: [number, number];
   normal?: number | null;
   [series: string]: unknown;
@@ -291,10 +291,8 @@ export default function ClimateChart(props: Props) {
         key,
         label: keyToLabel(key),
         normal: s.mean === null ? null : convert(s.mean, quantity, units),
-        band90:
-          s.p10 !== null && s.p90 !== null
-            ? [convert(s.p10, quantity, units), convert(s.p90, quantity, units)]
-            : undefined,
+        // p10/p90 are still computed by the climatology and remain available;
+        // they are simply no longer drawn. Only the middle half is shown.
         band50:
           s.p25 !== null && s.p75 !== null
             ? [convert(s.p25, quantity, units), convert(s.p75, quantity, units)]
@@ -405,9 +403,8 @@ export default function ClimateChart(props: Props) {
         // bands are the context that makes a single year readable, so a figure
         // without them explained is not self-contained.
         legend: [
-          { label: "Middle 50% of years", varName: "--band-inner", kind: "band" as const },
-          { label: "Middle 80% of years", varName: "--band-outer", kind: "band" as const },
-          { label: "Normal (mean)", varName: "--text-muted", kind: "dash" as const },
+          { label: "Middle half of years", varName: "--band-inner", kind: "band" as const },
+          { label: "Average", varName: "--text-muted", kind: "dash" as const },
           // Same colour assignment as `colorFor`, so the legend cannot drift
           // from the lines it describes.
           ...seriesYears.map((y, i) => ({
@@ -487,8 +484,8 @@ export default function ClimateChart(props: Props) {
       </div>
       <p className="card-sub">
         The dashed line is the {availableYears[0]}–{currentYear - 1} average for each calendar day
-        at this point, and the grey band shows how much the individual years varied around it. Pick
-        any year to draw on top.
+        at this point. The grey band is the middle half of those years — half of them ran inside it,
+        a quarter above and a quarter below. Pick any year to draw on top.
       </p>
 
       <div className="controls">
@@ -655,15 +652,19 @@ export default function ClimateChart(props: Props) {
               tickFormatter={(v: number) => v.toFixed(dp === 2 ? 1 : 0)}
             />
 
-            <Area
-              dataKey="band90"
-              stroke="none"
-              fill="var(--band-outer)"
-              fillOpacity={1}
-              isAnimationActive={false}
-              activeDot={false}
-              legendType="none"
-            />
+            {/*
+              ONE band, the middle half (25th-75th percentile).
+
+              Two nested bands asked the reader to hold two different
+              probabilities at once and told them neither clearly — a user said
+              plainly that the 50%/80% pair was confusing. There is no single
+              industry convention here: Cornell's Climate Smart Farming tool
+              shades the full record, NOAA defines "near normal" as the middle
+              third, and box plots use the middle half. The middle half was
+              chosen: it is the box-plot standard, it is the tightest honest
+              summary of a typical year, and "half of all years sat in here" is
+              a sentence that needs no further explanation.
+            */}
             <Area
               dataKey="band50"
               stroke="none"
@@ -740,11 +741,11 @@ export default function ClimateChart(props: Props) {
                         {typeof row.normal === "number" ? row.normal.toFixed(dp) : "—"} {unit}
                       </span>
                     </div>
-                    {row.band90 && (
+                    {row.band50 && (
                       <div className="tt-row">
-                        <span className="lbl">Middle 80%</span>
+                        <span className="lbl">Middle half of years</span>
                         <span className="val">
-                          {row.band90[0].toFixed(dp)}–{row.band90[1].toFixed(dp)}
+                          {row.band50[0].toFixed(dp)}–{row.band50[1].toFixed(dp)}
                         </span>
                       </div>
                     )}
@@ -768,14 +769,7 @@ export default function ClimateChart(props: Props) {
             className="swatch"
             style={{ background: "var(--band-inner)", display: "inline-block", marginRight: 5 }}
           />
-          Middle 50% of years
-        </span>
-        <span className="small muted">
-          <span
-            className="swatch"
-            style={{ background: "var(--band-outer)", display: "inline-block", marginRight: 5 }}
-          />
-          Middle 80% of years
+          Middle half of years
         </span>
         <span className="small muted">— — Normal (mean)</span>
         {lastObservedKey && <span className="small muted">┆ Last observed day</span>}
@@ -795,9 +789,9 @@ export default function ClimateChart(props: Props) {
             <thead>
               <tr>
                 <th>Date</th>
-                <th>Normal ({unit})</th>
-                <th>10th</th>
-                <th>90th</th>
+                <th>Average ({unit})</th>
+                <th>25th</th>
+                <th>75th</th>
                 {seriesYears.map((y) => (
                   <th key={y}>{y}</th>
                 ))}
@@ -812,8 +806,8 @@ export default function ClimateChart(props: Props) {
                     <tr key={r.key}>
                       <td>{r.label}</td>
                       <td>{typeof r.normal === "number" ? r.normal.toFixed(dp) : "—"}</td>
-                      <td>{r.band90 ? r.band90[0].toFixed(dp) : "—"}</td>
-                      <td>{r.band90 ? r.band90[1].toFixed(dp) : "—"}</td>
+                      <td>{r.band50 ? r.band50[0].toFixed(dp) : "—"}</td>
+                      <td>{r.band50 ? r.band50[1].toFixed(dp) : "—"}</td>
                       {seriesYears.map((y) => {
                         const v = r[`y${y}`];
                         return (

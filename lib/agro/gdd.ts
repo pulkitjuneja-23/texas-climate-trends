@@ -40,12 +40,48 @@ export const WHEAT_GDD: GddConfig = { base: 4.4, cutoff: 30, method: "simple" };
  */
 export const GDD_PRESETS: Record<
   string,
-  { label: string; short: string; config: GddConfig }
+  { label: string; short: string; config: GddConfig; planting: string }
 > = {
-  corn: { label: "Corn / sorghum (50-86°F)", short: "corn / sorghum", config: CORN_GDD },
-  cotton: { label: "Cotton (60-90°F)", short: "cotton", config: COTTON_GDD },
-  wheat: { label: "Wheat (40°F)", short: "wheat", config: WHEAT_GDD },
+  corn: {
+    label: "Corn / sorghum (50-86°F)",
+    short: "corn / sorghum",
+    config: CORN_GDD,
+    planting: "03-01",
+  },
+  cotton: { label: "Cotton (60-90°F)", short: "cotton", config: COTTON_GDD, planting: "04-01" },
+  wheat: { label: "Wheat (40°F)", short: "wheat", config: WHEAT_GDD, planting: "10-01" },
 };
+
+/**
+ * Where a season's heat accumulation should START, as MM-DD.
+ *
+ * WHY THIS EXISTS. Accumulating GDD from 1 January is arithmetically fine and
+ * agronomically meaningless — nobody plants corn in January. Measured at
+ * Beeville, corn GDD from 1 Jan reached 5,706 degF-days by late August, when a
+ * corn crop needs roughly 2,400-2,800 from planting to black layer. The tile
+ * was showing about two crops' worth of heat, and a user correctly said it
+ * "seems high". Heat units only mean something counted from planting.
+ *
+ * These are broad statewide defaults and WILL be wrong for a specific field —
+ * south Texas corn goes in around mid-February, the High Plains not until
+ * April. They are a better starting point than 1 January, not a substitute for
+ * the grower setting their own date, and the UI says so.
+ *
+ * WINTER WHEAT IS THE AWKWARD ONE. It is planted in the autumn and harvested
+ * the following summer, so its real window crosses the year boundary — which
+ * the season-to-date machinery cannot represent, since it accumulates within
+ * one calendar year. October is its true planting month; for most of the year
+ * that date lies in the future, and `plantingStart` falls back to 1 January
+ * rather than showing an empty tile. That fallback is a limitation, not a
+ * recommendation.
+ */
+export function plantingStart(presetKey: string, year: number, lastObserved?: string | null): string {
+  const md = GDD_PRESETS[presetKey]?.planting ?? "01-01";
+  const candidate = `${year}-${md}`;
+  // A planting date that has not arrived yet would accumulate nothing at all.
+  if (lastObserved && candidate > lastObserved) return `${year}-01-01`;
+  return candidate;
+}
 
 export function dailyGdd(
   tmax: number | null,
