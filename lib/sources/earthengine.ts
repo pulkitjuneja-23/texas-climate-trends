@@ -167,12 +167,31 @@ export async function getRegionSeries(
   let rows: unknown[][] = [];
   let lastError: unknown = null;
   for (let tryNo = 0; tryNo < 3; tryNo++) {
+    const started = Date.now();
     try {
       rows = await attempt();
       lastError = null;
+      /**
+       * Log every attempt, not just failures.
+       *
+       * These retries were previously invisible, and that hid a real problem:
+       * a route measured at 72 s wrapped an Earth Engine call measured at 30 s,
+       * and the missing 42 s was a silent failed attempt plus its backoff.
+       * Without this line the only symptom is "the site is slow sometimes".
+       */
+      const secs = ((Date.now() - started) / 1000).toFixed(1);
+      if (tryNo > 0) {
+        console.warn(`[ee] ${collectionId} succeeded on attempt ${tryNo + 1} after ${secs}s`);
+      } else if (Date.now() - started > 20_000) {
+        console.warn(`[ee] ${collectionId} slow: ${secs}s for ${start}..${end}`);
+      }
       break;
     } catch (e) {
       lastError = e;
+      const secs = ((Date.now() - started) / 1000).toFixed(1);
+      console.warn(
+        `[ee] ${collectionId} attempt ${tryNo + 1}/3 failed after ${secs}s: ${describeEeError(e)}`
+      );
       // 1s then 3s. Long enough for a concurrency slot to free, short enough
       // that the visitor is not left waiting on a lost cause.
       if (tryNo < 2) await new Promise((r) => setTimeout(r, tryNo === 0 ? 1000 : 3000));

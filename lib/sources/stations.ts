@@ -1,4 +1,5 @@
 import type { DailyRecord, FetchOpts, WeatherSource, SourceMeta } from "@/lib/types";
+import { q } from "./precision";
 
 /**
  * Airport weather stations (ASOS/AWOS), served from the Iowa Environmental
@@ -106,10 +107,40 @@ export async function findNearestStation(
   minStartYear?: number,
   signal?: AbortSignal
 ): Promise<StationInfo | null> {
+  /**
+   * All five networks at once.
+   *
+   * This used to walk NETWORKS in order and break as soon as it found a station
+   * within 60 km. For most of Texas that meant one request — but a point near
+   * the Oklahoma, New Mexico, Louisiana or Arkansas line paid up to FIVE
+   * sequential round trips, and every one of them sat on the critical path
+   * before the station's actual observations were even requested.
+   *
+   * Fanning out makes the worst case cost the same as the best case. The lists
+   * are small and cached for a day, so after the first load they are free.
+   *
+   * One deliberate behaviour change: without the early break this now returns
+   * the genuinely nearest station rather than the first acceptable one. Near a
+   * state line that can pick a different (closer) station than before.
+   */
+  const settled = await Promise.allSettled(
+    NETWORKS.map(async (network) => ({ network, stations: await loadNetwork(network, signal) }))
+  );
+
   let best: StationInfo | null = null;
 
-  for (const network of NETWORKS) {
-    const stations = await loadNetwork(network, signal);
+  for (let i = 0; i < settled.length; i++) {
+    const r = settled[i];
+    if (r.status === "rejected") {
+      // Never swallow this silently — a dropped network is a whole state's
+      // worth of stations missing from the search, and the only symptom would
+      // be a suspiciously distant "nearest" station.
+      const why = r.reason instanceof Error ? r.reason.message : String(r.reason);
+      console.warn(`[stations] network ${NETWORKS[i]} unavailable: ${why}`);
+      continue;
+    }
+
+    const { network, stations } = r.value;
     for (const s of stations) {
       if (s.latitude === null || s.longitude === null) continue;
       if (!s.online) continue;
@@ -130,8 +161,6 @@ export async function findNearestStation(
         };
       }
     }
-    // Texas stations are dense; if we already have one close by, stop early.
-    if (best && best.distanceKm < 60) break;
   }
 
   return best;
@@ -202,17 +231,20 @@ export async function fetchStationDaily(
       const dewF = n(r.max_dewpoint_f);
       const windKt = n(r.avg_wind_speed_kts);
 
+      // IEM reports whole degrees F and hundredths of an inch; converting to
+      // metric invents digits (fToC(67) = 19.444444444444443). Rounded back to
+      // the precision the instrument actually had — see lib/sources/precision.ts.
       return {
         // IEM returns an ISO timestamp; keep the calendar date only.
         date: String(r.day).slice(0, 10),
-        tmax,
-        tmin,
-        tmean: tmax !== null && tmin !== null ? (tmax + tmin) / 2 : null,
-        precip: precipIn === null ? null : inToMm(precipIn),
-        srad: n(r.srad_mj),
-        rh: n(r.max_rh),
-        wind: windKt === null ? null : ktsToMs(windKt),
-        dew: dewF === null ? null : fToC(dewF),
+        tmax: q(tmax),
+        tmin: q(tmin),
+        tmean: tmax !== null && tmin !== null ? q((tmax + tmin) / 2) : null,
+        precip: precipIn === null ? null : q(inToMm(precipIn)),
+        srad: q(n(r.srad_mj)),
+        rh: q(n(r.max_rh)),
+        wind: windKt === null ? null : q(ktsToMs(windKt)),
+        dew: dewF === null ? null : q(fToC(dewF)),
         origin: `${meta.id}:${stationId}`,
       } satisfies DailyRecord;
     })

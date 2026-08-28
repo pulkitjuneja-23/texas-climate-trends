@@ -1,7 +1,38 @@
 import { NextResponse } from "next/server";
-import { fetchMonthlyEt, DEFAULT_BUFFER_M, OPENET_START } from "@/lib/sources/openet";
-import { fetchReferenceEt } from "@/lib/sources/gridmet";
+import {
+  fetchMonthlyEt,
+  DEFAULT_BUFFER_M,
+  OPENET_START,
+  type OpenEtResponse,
+} from "@/lib/sources/openet";
+import { fetchReferenceEt, type DailyEto } from "@/lib/sources/gridmet";
+import { readMany, writeMany, cacheEnabled, type PutEntry } from "@/lib/cache/store";
 import { validateLatLon } from "@/lib/geo";
+
+/**
+ * Both water layers are Earth Engine calls, so both are cached.
+ *
+ * OpenET is the expensive one: a 30 m reduceRegion over 130 months, and it runs
+ * on EVERY page load whether or not anyone opens a water view. That is the main
+ * consumer of the Earth Engine compute budget.
+ *
+ * Cached on coordinates rounded to ~11 m. That is far finer than the 30 m pixel
+ * and the 100 m sampling buffer, so it cannot change the answer — but it does
+ * collapse repeat visits to one spot, which map clicks would otherwise miss by
+ * a fraction of a metre every time.
+ *
+ * ET is deliberately NOT snapped to a coarse grid the way the weather sources
+ * are. A pin in a field and a pin on the road beside it genuinely differ, and
+ * flattening that would destroy the reason this layer exists.
+ */
+const ET_KEY_DP = 4;
+
+/** OpenET publishes monthly, so a day-old answer is never meaningfully stale. */
+const ET_TTL = 24 * 3600;
+
+function etKey(kind: string, lat: number, lon: number, extra: string): string {
+  return `${kind}:${lat.toFixed(ET_KEY_DP)},${lon.toFixed(ET_KEY_DP)}:${extra}`;
+}
 
 export const runtime = "nodejs";
 /** Past months never change; cache hard. */
@@ -56,14 +87,68 @@ export async function GET(req: Request) {
      */
     const wantReference = url.searchParams.get("reference") === "1";
 
+    const actualKey = etKey("et", lat, lon, String(bufferM));
+    const refKey = etKey("refet", lat, lon, refStart.slice(0, 4));
+
+    // One round trip for both, so a cache hit costs a single query.
+    const hits = await readMany<unknown>(
+      wantReference ? [actualKey, refKey] : [actualKey]
+    );
+    const actualHit = hits.get(actualKey) as { payload: OpenEtResponse } | undefined;
+    const refHit = wantReference
+      ? (hits.get(refKey) as { payload: DailyEto[] } | undefined)
+      : undefined;
+
     // Independent failure: a missing Earth Engine key must not take reference
-    // ET down with it, and a THREDDS outage must not hide OpenET.
+    // ET down with it, and one layer failing must not hide the other.
     const [refSettled, actualSettled] = await Promise.allSettled([
-      wantReference
-        ? fetchReferenceEt({ lat, lon, start: refStart, end: today })
-        : Promise.resolve(null),
-      fetchMonthlyEt({ lat, lon }, { bufferM, start: OPENET_START, end: today }),
+      !wantReference
+        ? Promise.resolve(null)
+        : refHit
+        ? Promise.resolve(refHit.payload)
+        : fetchReferenceEt({ lat, lon, start: refStart, end: today }),
+      actualHit
+        ? Promise.resolve(actualHit.payload)
+        : fetchMonthlyEt({ lat, lon }, { bufferM, start: OPENET_START, end: today }),
     ]);
+
+    /**
+     * Store only successes, and only real ones.
+     *
+     * An `available: false` OpenET result is usually a setup or outage problem,
+     * not a fact about the location. Caching it for a day would turn a
+     * five-minute Earth Engine hiccup into a day of blank water panels.
+     */
+    // Two different payload shapes go into the same table, so the entry list is
+    // typed at the store's boundary rather than inferred from the first push.
+    const toWrite: PutEntry<unknown>[] = [];
+    if (
+      !actualHit &&
+      actualSettled.status === "fulfilled" &&
+      actualSettled.value?.available
+    ) {
+      toWrite.push({
+        key: actualKey,
+        scope: "et",
+        source: "openet",
+        payload: actualSettled.value,
+        contributors: ["openet"],
+        rows: actualSettled.value.monthly.length,
+        ttlSeconds: ET_TTL,
+      });
+    }
+    if (!refHit && refSettled.status === "fulfilled" && refSettled.value?.length) {
+      toWrite.push({
+        key: refKey,
+        scope: "refet",
+        source: "gridmet",
+        payload: refSettled.value,
+        contributors: ["gridmet"],
+        rows: refSettled.value.length,
+        ttlSeconds: ET_TTL,
+      });
+    }
+    if (toWrite.length) await writeMany(toWrite);
 
     const reference = !wantReference
       ? { available: false as const, reason: "Not requested.", requested: false, daily: [] }
@@ -97,6 +182,11 @@ export async function GET(req: Request) {
         bufferM,
         referenceEt: reference,
         actualEt: actual,
+        cache: {
+          enabled: cacheEnabled,
+          actualEtFromCache: Boolean(actualHit),
+          referenceEtFromCache: Boolean(refHit),
+        },
         notes: {
           openEtStart: OPENET_START,
           why: "Reference ET is what a standard crop would need. Actual ET is what this field measurably used.",

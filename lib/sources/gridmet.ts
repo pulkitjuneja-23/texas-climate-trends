@@ -1,5 +1,7 @@
 import type { DailyRecord, FetchOpts, WeatherSource, SourceMeta } from "@/lib/types";
 import { getEe, getRegionSeries } from "./earthengine";
+import { q } from "./precision";
+import { readArchivePoint } from "@/lib/archive/read";
 
 /**
  * gridMET (Abatzoglou, University of Idaho) — 4 km CONUS daily, via Earth Engine.
@@ -70,6 +72,37 @@ const BANDS = ["tmmx", "tmmn", "pr", "eto"];
  * possible single answer.
  */
 export async function fetchDaily(opts: FetchOpts): Promise<DailyRecord[]> {
+  /**
+   * Our own archive first.
+   *
+   * Same gridMET numbers, verified day-by-day against Earth Engine to the
+   * packing precision — but pre-transposed, so one field's thirty years is a
+   * few small downloads instead of a computation over 11,500 daily grids.
+   *
+   * It returns null for anything it cannot answer completely: outside Texas,
+   * earlier than the archive starts, or a chunk that failed to arrive. Every
+   * one of those falls through to Earth Engine below, so the archive can only
+   * make the site faster, never break it.
+   */
+  const archived = await readArchivePoint(opts.lat, opts.lon, opts.start, opts.end);
+  if (archived) {
+    return archived.dates.map((date, i) => {
+      // The archive stores Kelvin, as gridMET does. Rounded on the way out for
+      // the same reason as the Earth Engine path — see lib/sources/precision.ts.
+      const k2c = (v: number | null | undefined) => (v === null || v === undefined ? null : q(v - KELVIN));
+      const tmax = k2c(archived.values.tmmx?.[i]);
+      const tmin = k2c(archived.values.tmmn?.[i]);
+      return {
+        date,
+        tmax,
+        tmin,
+        tmean: tmax !== null && tmin !== null ? q((tmax + tmin) / 2) : null,
+        precip: q(archived.values.pr?.[i]),
+        origin: meta.id,
+      } satisfies DailyRecord;
+    });
+  }
+
   const conn = await getEe();
   if (!conn.ee) throw new Error(conn.error);
 
@@ -88,14 +121,17 @@ export async function fetchDaily(opts: FetchOpts): Promise<DailyRecord[]> {
   return rows
     .filter((r) => r.date >= opts.start && r.date <= opts.end)
     .map((r) => {
-      const tmax = r.values.tmmx === null ? null : r.values.tmmx - KELVIN;
-      const tmin = r.values.tmmn === null ? null : r.values.tmmn - KELVIN;
+      // Rounded because subtracting 273.15 invents digits: gridMET is stored at
+      // 0.1 degC precision, but the raw subtraction yields 19.749993896484398.
+      // See lib/sources/precision.ts.
+      const tmax = q(r.values.tmmx === null ? null : r.values.tmmx - KELVIN);
+      const tmin = q(r.values.tmmn === null ? null : r.values.tmmn - KELVIN);
       return {
         date: r.date,
         tmax,
         tmin,
-        tmean: tmax !== null && tmin !== null ? (tmax + tmin) / 2 : null,
-        precip: r.values.pr,
+        tmean: tmax !== null && tmin !== null ? q((tmax + tmin) / 2) : null,
+        precip: q(r.values.pr),
         origin: meta.id,
       } satisfies DailyRecord;
     });
@@ -122,6 +158,13 @@ export interface DailyEto {
  * meant ~27 more requests to Idaho, which is why it was made opt-in.
  */
 export async function fetchReferenceEt(opts: FetchOpts): Promise<DailyEto[]> {
+  // The archive carries reference ET in the same chunks as the weather, so this
+  // costs no extra request when the point is covered.
+  const archived = await readArchivePoint(opts.lat, opts.lon, opts.start, opts.end);
+  if (archived?.values.pet) {
+    return archived.dates.map((date, i) => ({ date, eto: q(archived.values.pet[i]) }));
+  }
+
   const conn = await getEe();
   if (!conn.ee) throw new Error(conn.error);
 
@@ -138,7 +181,7 @@ export async function fetchReferenceEt(opts: FetchOpts): Promise<DailyEto[]> {
 
   return rows
     .filter((r) => r.date >= opts.start && r.date <= opts.end)
-    .map((r) => ({ date: r.date, eto: r.values.eto }));
+    .map((r) => ({ date: r.date, eto: q(r.values.eto) }));
 }
 
 const source: WeatherSource = { meta, fetchDaily };

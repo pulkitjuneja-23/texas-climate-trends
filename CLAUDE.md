@@ -771,6 +771,124 @@ server-only imports; `registry.ts` re-exports it for server code.
 
 EE connection extracted to `lib/sources/earthengine.ts` and shared by OpenET and gridMET.
 
+### 2026-08-27 — Cache layer, then our own gridMET archive on R2
+
+**Why:** with ~10-15 people looking at different fields the site timed out. Measured raw,
+one user, no concurrency: **a 25-year gridMET point query from Earth Engine took 18-82 s**,
+wildly variable, 2-7x slower than the ~11 s recorded on 26 Aug. Not a 429/concurrency
+problem — zero retries fired. EE is simply slow for this shape of query, and caching alone
+cannot fix a *cold* cell.
+
+**Parallelised `/api/history`.** It ran three upstream stages in sequence: fetchDaily
+(~11 s) THEN the station lookup THEN the station's observations. The station chain needs
+only the coordinates, so it now starts immediately and fetches a trailing window sized from
+the source's declared `latencyDays`, trimmed once the gridded source answers. If a source
+lags further than it declares, it says so rather than serving a short fill.
+`findNearestStation` also walked five state networks sequentially with an early break —
+cheap in central Texas, up to five round trips near a state line. Now all five at once,
+which also returns the genuinely nearest station rather than the first acceptable one.
+
+**Earth Engine retries were silent.** Every attempt now logs, and any call over 20 s logs
+as slow. Without this the only symptom of a bad day at Google is "the site is slow
+sometimes".
+
+#### Supabase cache (`lib/cache/`)
+
+Keyed by **year**, not by date range — because a completed past year never changes. 26 of
+27 years store permanently; only the year in progress expires (3 h). A revisit whose current
+year has gone stale re-fetches ONE year, not twenty-seven.
+
+- **No dependency.** Supabase is PostgREST over HTTPS, so `fetch` is enough — which also
+  allows a hard 2.5 s deadline on reads. A slow cache must never be slower than no cache.
+- Nothing in `store.ts` throws. Missing config, network failure, timeout and corrupt row all
+  produce a miss followed by a live fetch.
+- An upstream failure is no longer automatically fatal: if the cache holds the years, an
+  Earth Engine outage is invisible to the visitor.
+- **`SUPABASE_URL` may be pasted with or without a trailing `/rest/v1/`** — the dashboard
+  shows it both ways. The code strips it. Getting this wrong produced PGRST125 "Invalid path"
+  on every call, silent by design, so the only symptom was a cache that never hit.
+- Supabase renamed its keys in 2026: **`sb_secret_...` replaces `service_role`**. Both work.
+  The `apikey` and `Authorization` headers must carry the SAME value — new-style keys are
+  rejected in `Authorization` otherwise.
+- Measured: **~11 kB per stored year on disk**, ~1,700 locations inside the free 500 MB.
+
+**Float noise, found while measuring cache size.** Storage was 52 kB/year against a 5-10 kB
+estimate, because values read `19.749993896484398` — 17 significant digits on data gridMET
+stores at 0.1 degC. Kelvin subtraction and Fahrenheit conversion both manufacture digits.
+`lib/sources/precision.ts` rounds to 2 dp, which is *exactly* gridMET's real precision (see
+below). Also cut the browser payload ~24%.
+
+**Dropping `origin` and `tmean` from stored rows saved 35% of the JSON — and nothing on
+disk.** Postgres was already compressing away the repeated `"origin":"gridmet"` strings, so
+removing them made the remainder compress worse (3.4x -> 2.3x). Kept for the client-side
+parse saving, but **do not expect encoding tricks to beat Postgres at compression.**
+The trap it nearly caused: **NASA POWER's `tmean` is T2M, an independent measurement, NOT
+the midpoint of tmax/tmin.** It is dropped only where it demonstrably equals the midpoint,
+and an explicitly-null `tmean` stays null rather than being invented.
+
+#### The gridMET archive (`lib/archive/`, `scripts/ingest-gridmet.mts`)
+
+Texas gridMET, 1995-present, four variables, transposed from "all of Texas on one day" into
+"one field across thirty years", stored as **Zarr on Cloudflare R2**.
+
+**Result: a cold lookup went from 18-82 s to 1.6-1.8 s**, verified at Waco, Lubbock,
+Weslaco, Dalhart and East Texas. Earth Engine is off the critical path for the default
+source entirely, so its 40-concurrent cap no longer applies to normal traffic.
+
+- **1.39 GB, 20,820 objects, 24 minutes** to build. R2's free tier is 10 GB.
+- **The website needs no credentials.** The bucket is public-read (gridMET is freely
+  redistributable); only the ingest script holds a key, and it runs on a laptop.
+- `lib/archive/read.ts` returns **null, never throws** — outside Texas, before 1995, or a
+  missing chunk all fall back to Earth Engine. The archive can only make the site faster.
+- **The manifest is written LAST.** Until it exists the reader treats the archive as absent,
+  so a half-finished upload can never be served as complete.
+
+**THREDDS NCSS facts (verified 2026-08-27, all contradict something):**
+- **`accept=netcdf4` is BROKEN** on northwestknowledge.net — "NetCDF: HDF error". Only
+  `accept=netcdf` (classic) works. `accept=csv` is refused for grid requests.
+- **The 365-day cap does NOT apply to NCSS.** 31 years came back in one request, 148 MB in
+  15 s. That limit is an OPeNDAP behaviour only.
+- Grass reference ET is **`pet`** (`daily_mean_reference_evapotranspiration_grass`), not
+  `eto` as Earth Engine names it. `etr` is the alfalfa reference.
+- Variables are `short` with **scale/offset declared in the header**, so the per-variable
+  offset trap (tmmx +220 K, tmmn +210 K) is read, never hardcoded.
+- `day` is a FIXED dimension, not unlimited — so data is contiguous. An unlimited dimension
+  would interleave by record and a contiguous read would scramble it silently.
+
+**THE BAND ALIGNMENT TRAP — this one shipped and was caught only by an assertion.**
+Downloads are 16-row latitude bands (16 divides both chunk widths, 4 and 16; a band
+straddling a chunk boundary writes half-filled chunks that the next band overwrites, losing
+rows). Requesting a band with **half a cell of padding lands exactly on the cell boundary**,
+and NCSS selects every cell its box touches — so band 1 asked for 16 rows and got 18, while
+band 0 escaped because the grid edge clamped it. Now: quarter-cell padding, AND the wanted
+rows are located inside whatever comes back by matching latitude values. **Never assume the
+server returns the shape you asked for.**
+
+**Chunk shape is different per part, deliberately.** `archive` (1995-last year) uses 4x4
+pixel blocks — written once a year, read constantly, so small downloads win. `current` (this
+year) uses 16x16 — rewritten on every refresh, so the OBJECT COUNT is what matters. At a
+uniform 4x4 a daily refresh costs ~624,000 uploads/month against a 1,000,000 free allowance;
+at 16x16 it is ~41,000, leaving room for a second source.
+
+**Compression varies enormously by variable** — rainfall 15% of source (mostly zeros),
+temperature 38%, reference ET 19%. Any estimate from one variable will be wrong.
+
+**Node 24 has zstd built in** (`zstdCompressSync`), which is why the reader needs no
+dependency. `@types/node@20` does not know it — declared in `types/node-zstd.d.ts`. The
+compression-level option key is **`zlib.constants.ZSTD_c_compressionLevel` = 100**, not a
+small number.
+
+**Verified, not assumed:** 1,464 values at Waco compared against Earth Engine day by day —
+**1,463 exact**. The one exception, `tmmn` 2024-01-31, differs by 0.5 K, and querying
+THREDDS directly showed **the archive matches its source and Earth Engine is the outlier** —
+the same class as the 2026-01-01 discrepancy above. Annual rainfall 2019-2025 matches the
+independently measured gridMET row in the table above to within 0.05 in every year.
+
+**Sanity-value clarification:** the "~929 mm / 36.6 in" Waco normal in the table above is
+**NASA POWER's**, not gridMET's. gridMET gives **970 mm / 38.2 in** at the same point, which
+is consistent with the source-disagreement table showing gridMET ~15% wetter than POWER
+there. Always state which source a sanity value belongs to.
+
 ## Next up
 
 Roughly in value order:
