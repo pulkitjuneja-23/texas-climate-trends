@@ -199,6 +199,24 @@ export function percentOfTrend(
 }
 
 /**
+ * The same comparison as a SIGNED deviation: -7% rather than 93%.
+ *
+ * The baseline is unchanged — still the fitted trend for that year, so the
+ * thirty years of genetic improvement are still removed. Only the presentation
+ * differs, and it differs for a reason: "93%" makes the reader subtract from a
+ * hundred before it means anything, while "-7%" is already the answer. Above
+ * zero beat what was normal for that year; below fell short.
+ */
+export function deviationFromTrend(
+  trend: YieldTrend | undefined,
+  year: number,
+  value: number
+): number | null {
+  const pct = percentOfTrend(trend, year, value);
+  return pct === null ? null : pct - 100;
+}
+
+/**
  * One county's slice, as the API sends it to the browser.
  *
  * Declared here rather than in `read.ts` so a client component can import the

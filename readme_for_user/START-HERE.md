@@ -198,21 +198,25 @@ at the top. It is **not** a forecast.
 column shows what that crop actually yielded, in your county, in each of those matched years. Only
 crops your county actually grows are listed, so the choices change as you move the pin.
 
-Each cell shows **two numbers**, and the second one is the important one:
+The column shows the plain yield, so you can compare the years by eye. **Hover over a number — or
+tap it on a phone — and it also tells you how that year compared to the long-term trend:**
 
-> **395** lb/ac &nbsp;&nbsp; **56%**
+> **395** &nbsp;→ hover → &nbsp; **−44%**
 
-The first is what the county averaged that year. The second is that yield compared to **the trend
-for that year** — and you need it, because yields have been climbing for thirty years for reasons
-that have nothing to do with weather. Better seed, better equipment, better practice. Texas cotton
-has improved about 1.6% a year, every year.
+You need that second figure more than it looks. Yields have been climbing for thirty years for
+reasons that have nothing to do with weather: better seed, better equipment, better practice. Texas
+cotton has improved about **1.6% a year, every year**. So a perfectly good season in 1998 produces a
+smaller number than a mediocre one in 2023, purely because of the seed available at the time.
 
-Without that second number a good season in 1998 would look like a disaster next to an ordinary one
-in 2023, purely because of the seed available at the time. **Above 100% means that year beat what
-was normal for its era; below means it fell short.** Blue is above, red is below.
+Comparing each year against the trend **for that year** removes that. **Plus means the harvest beat
+what was normal for its era; minus means it fell short.** Blue is above, red is below. Tap again to
+hide it.
 
-Two more things about this column:
+Three more things about this column:
 
+- **It follows the °F/°C switch at the top**, like everything else. In metric it shows **t/ha**
+  (tonnes per hectare). Each crop converts differently — a bushel is a measure of *volume*, and a
+  bushel of oats weighs 32 lb where a bushel of wheat weighs 60 — so the sums are done per crop.
 - **Where there is a "Yield from" switch**, you can choose irrigated acres, dryland acres, or both
   together. Take dryland if you have it — those are the acres the weather actually decides, and it
   is the honest comparison against a dry year. Only about half the crops publish the split.
@@ -222,9 +226,10 @@ Two more things about this column:
   that year", not as a prediction for your field.
 - A **dotted underline** under the percentage means your county reports too few years to work out
   its own trend, so the statewide rate was used instead, set to your county's own average level.
-  Hover to see it.
 
-The current year says **"not yet"** — the figures are published the spring after harvest.
+The current year says **"not yet"** — the figures are published the spring after harvest. The
+**Typical year** row shows what a normal year yields *now*, rather than an average of the years
+above, which would be dragged down by thirty years of older seed.
 
 **6. Next month prediction** — the forecast
 Three levels, deliberately kept apart because they are not equally trustworthy:

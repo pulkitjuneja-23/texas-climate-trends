@@ -15,8 +15,9 @@ import { waterBalanceForWindow, balanceWording, type WaterWindow } from "@/lib/a
 // Both of these modules are pure data and maths with no imports of their own,
 // so a client component may use them; the reader that touches process.env
 // stays on the server.
-import { percentOfTrend, yieldAt, type CountyYields } from "@/lib/yield/types";
+import { deviationFromTrend, yieldAt, type CountyYields } from "@/lib/yield/types";
 import { PRACTICE_LABELS, PRACTICE_HELP, type PracticeId } from "@/lib/yield/crops";
+import { yieldUnitView } from "@/lib/yield/units";
 
 /**
  * "Which past year is this one tracking like?"
@@ -146,6 +147,23 @@ export default function AnalogPanel({
   const cropData = crop ? yields?.data[crop.id] : undefined;
   const series = cropData?.series[activePractice];
   const trend = cropData?.trend[activePractice];
+
+  /**
+   * Yield is the one column the unit toggle used to miss, because NASS reports
+   * it in three different US units and a bushel is a volume — so the factor is
+   * per crop, not global. See lib/yield/units.ts.
+   */
+  const uv = crop ? yieldUnitView(crop, units) : null;
+
+  /**
+   * Which row is showing its comparison, on touch.
+   *
+   * The percentage is hidden by default so the column reads as plain yields.
+   * Hover reveals it on a desktop, but a phone has no hover — so the cell is a
+   * button and a tap toggles the same thing. One row at a time: tapping another
+   * moves it rather than accumulating.
+   */
+  const [revealed, setRevealed] = useState<number | null>(null);
 
   const result = useMemo(() => {
     try {
@@ -279,41 +297,54 @@ export default function AnalogPanel({
 
   function yieldCell(year: number) {
     if (yieldsLoading) return <span className="muted">…</span>;
-    if (!crop || !series) return <span className="muted">n/a</span>;
+    if (!crop || !series || !uv) return <span className="muted">n/a</span>;
 
-    const v = yieldAt(series, year);
+    const raw = yieldAt(series, year);
     // NASS publishes a county yield the spring after harvest, so the year in
     // progress legitimately has none. Say "not yet", not "no data" — they mean
     // different things and only one of them is a gap in the record.
-    if (v === null) {
+    if (raw === null) {
       return <span className="muted">{year >= currentYear ? "not yet" : "—"}</span>;
     }
 
-    const pct = percentOfTrend(trend, year, v);
+    const shown = (raw * uv.factor).toFixed(uv.decimals);
+
+    // A RATIO, so it needs no unit conversion — the same in bu/ac or t/ha.
+    const dev = deviationFromTrend(trend, year, raw);
+    if (dev === null) return <span style={{ fontWeight: 650 }}>{shown}</span>;
+
+    const on = revealed === year;
     return (
-      <>
-        <span style={{ fontWeight: 650 }}>{v.toFixed(crop.decimals)}</span>
-        {pct !== null && (
-          <span
-            title={
-              trend?.borrowed
-                ? "Compared against the statewide rate of improvement for this crop, " +
-                  "anchored to this county's own average — this county has too few " +
-                  "reported years to fit its own trend."
-                : `Compared against this county's own fitted trend (${trend?.n} years).`
-            }
-            style={{
-              fontSize: "0.72rem",
-              marginLeft: 5,
-              fontWeight: 500,
-              color: pct >= 100 ? "var(--div-cool)" : "var(--div-warm)",
-              borderBottom: trend?.borrowed ? "1px dotted currentColor" : undefined,
-            }}
-          >
-            {pct.toFixed(0)}%
-          </span>
-        )}
-      </>
+      <button
+        type="button"
+        className="yield-cell"
+        aria-expanded={on}
+        aria-label={`${shown} ${uv.label}, ${Math.abs(dev).toFixed(0)}% ${
+          dev >= 0 ? "above" : "below"
+        } the long-term trend`}
+        title={
+          `${Math.abs(dev).toFixed(0)}% ${dev >= 0 ? "above" : "below"} the long-term trend for ` +
+          `${year}. ` +
+          (trend?.borrowed
+            ? "Measured against the statewide rate of improvement for this crop, anchored to " +
+              "this county's own average — this county reports too few years to fit its own."
+            : `Measured against this county's own fitted trend (${trend?.n} years).`)
+        }
+        onClick={() => setRevealed(on ? null : year)}
+      >
+        <span className="yv">{shown}</span>
+        <span
+          className="yp"
+          data-on={on || undefined}
+          style={{
+            color: dev >= 0 ? "var(--div-cool)" : "var(--div-warm)",
+            borderBottom: trend?.borrowed ? "1px dotted currentColor" : undefined,
+          }}
+        >
+          {dev >= 0 ? "+" : "−"}
+          {Math.abs(dev).toFixed(0)}%
+        </span>
+      </button>
     );
   }
 
@@ -454,7 +485,7 @@ export default function AnalogPanel({
                       </option>
                     ))}
                   </select>
-                  <span className="yield-unit">{crop.unitShort}</span>
+                  <span className="yield-unit">{uv!.label}</span>
                 </th>
               )}
             </tr>
@@ -636,7 +667,7 @@ export default function AnalogPanel({
                       now, which is the number a farmer can actually compare
                       their own field against.
                     */}
-                    {trend ? (
+                    {trend && uv ? (
                       <span
                         title={
                           `What a normal year yields now, from the fitted trend. ` +
@@ -644,9 +675,10 @@ export default function AnalogPanel({
                           `of changing genetics.`
                         }
                       >
-                        {(trend.intercept + trend.slope * result.currentYear).toFixed(
-                          crop.decimals
-                        )}
+                        {(
+                          (trend.intercept + trend.slope * result.currentYear) *
+                          uv.factor
+                        ).toFixed(uv.decimals)}
                         <span className="muted" style={{ fontSize: "0.72rem", marginLeft: 5 }}>
                           now
                         </span>
@@ -673,9 +705,10 @@ export default function AnalogPanel({
             {" "}
             <strong>{crop.label}</strong> yield is the average across all of{" "}
             <strong>{yields!.county.name} County</strong> — a much coarser thing than the weather
-            columns beside it, which come from the grid cell containing your pin. The percentage is
-            that year against the long-term trend, because thirty years of better genetics would
-            otherwise make every old year look like a failure. {yields!.attribution}.
+            columns beside it, which come from the grid cell containing your pin. Hover or tap a
+            yield to see how far it sat above or below the long-term trend; that comparison is
+            against the trend rather than a flat average because thirty years of better genetics
+            would otherwise make every old year look like a failure. {yields!.attribution}.
           </>
         )}
       </div>

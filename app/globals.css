@@ -835,6 +835,62 @@ tbody tr:last-child td {
   color: var(--text-muted);
 }
 
+/*
+  A yield, with its comparison hidden until asked for.
+
+  The column should read as plain yields — a farmer comparing them by eye does
+  not need a percentage in the way. But the comparison against the long-term
+  trend is the thing that makes an old year legible, so it stays one gesture
+  away rather than being removed.
+
+  It is a BUTTON because a phone has no hover. Hover reveals it on a desktop,
+  a tap toggles it on touch, and it is keyboard-reachable either way. Styled to
+  look like table text, not a control.
+*/
+.analog-table .yield-cell {
+  all: unset;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.analog-table .yield-cell .yv {
+  font-weight: 650;
+}
+
+.analog-table .yield-cell .yp {
+  font-size: 0.72rem;
+  font-weight: 500;
+  /* Opacity rather than display, so revealing it cannot shift the column and
+     make the numbers beside it jump. */
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.analog-table .yield-cell:hover .yp,
+.analog-table .yield-cell:focus-visible .yp,
+.analog-table .yield-cell .yp[data-on] {
+  opacity: 1;
+}
+
+.analog-table .yield-cell:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: 2px;
+}
+
+/*
+  On a touch screen there is no hover to discover this with, so give the number
+  a faint affordance that it does something. Suppressed on pointer devices,
+  where hovering already reveals it.
+*/
+@media (hover: none) {
+  .analog-table .yield-cell .yv {
+    border-bottom: 1px dotted var(--text-muted);
+  }
+}
+
 /* The long-run baseline: set apart from the matched years above it. */
 .analog-table .avg-row td {
   border-top: 2px solid var(--border-strong);

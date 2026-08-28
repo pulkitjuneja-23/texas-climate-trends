@@ -1098,6 +1098,35 @@ that yield as a **% of the fitted trend for its year**. At Bell County: 1998 cor
 of trend, 2011 33.0 = 42%, 2019 105.8 = 119%. The percentage is what answers the question the panel
 asks.
 
+**Presented as a SIGNED deviation** (`-7%`, `+35%`), not a percent-of (`93%`) — user call,
+2026-08-28, and a good one: "93%" makes the reader subtract from a hundred before it means anything.
+The baseline is unchanged, still the fitted trend for that year. **Hidden until hover or tap**, so
+the column reads as plain yields; it is a `<button>` rather than a `title` because a phone has no
+hover, and `@media (hover: none)` adds a dotted underline so the affordance is discoverable on
+touch. Revealed with `opacity`, not `display`, so nothing shifts.
+
+#### YIELD IGNORED THE UNIT TOGGLE — and one multiplier would not have fixed it
+
+Reported by the user: every other variable responded to °F/°C, yield did not. It cannot share
+`lib/agro/units.ts` because NASS reports three different US units here and **a bushel is a unit of
+VOLUME**, so converting it to mass needs each crop's own legal test weight:
+
+| NASS unit | Crops | To t/ha |
+|---|---|---|
+| `LB / ACRE` | cotton, peanuts, rice, sunflower | x 0.00112085 |
+| `TONS / ACRE` | sugarcane (US **short** tons, 2000 lb) | x 2.2417 |
+| `BU / ACRE` | corn, sorghum **56 lb**; wheat, soybeans **60 lb**; oats **32 lb** | test weight x 0.00112085 |
+
+**Using one bushel factor for all of them would overstate an oat crop by 88%.** `lib/yield/units.ts`
+returns **null** for a bushel crop with no known test weight and the UI falls back to US units,
+rather than inventing a plausible wrong number. Verified against published equivalences: 150 bu/ac
+corn = 9.415 t/ha, 50 bu/ac soybeans = 3.363, 30 short tons/ac sugarcane = 67.25, and the
+oats:wheat factor ratio is exactly 60/32.
+
+**t/ha not Mg/ha** — identical values, but t/ha is what extension services and FAO print. Cotton
+lands near 0.6 t/ha (it is lint, not seed cotton); two decimals keep it readable rather than
+switching that one crop to kg/ha and putting two metric units in one column.
+
 Same trap in the **"Typical year" row**: averaging the analog years' raw yields spans three decades
 of changing genetics and would reintroduce exactly that bias. It shows the **trend value at the
 current year** instead — what a normal year yields *now*.
