@@ -631,6 +631,40 @@ export default function Page() {
         </div>
       </div>
 
+      {/*
+        Sky-to-field band under the sticky bar.
+
+        Drawn, not photographed: an inline SVG horizon costs about a kilobyte,
+        scales to any width, and re-tints with the theme — where a photograph
+        would be hundreds of kilobytes on a rural connection and would fight the
+        charts for attention. It sits ABOVE all data and behind nothing: the
+        validated chart palette depends on a neutral surface, so no background
+        art goes near a plot.
+      */}
+      <header className="hero" aria-labelledby="hero-title">
+        <div className="hero-sky" aria-hidden="true">
+          <svg viewBox="0 0 1440 120" preserveAspectRatio="none" focusable="false">
+            {/* Two overlapping ridges give depth without detail that would
+                compete with the page. */}
+            <path
+              className="hero-ridge-far"
+              d="M0,96 C160,74 300,104 470,88 C640,72 760,96 920,82 C1080,68 1260,92 1440,78 L1440,120 L0,120 Z"
+            />
+            <path
+              className="hero-ridge-near"
+              d="M0,110 C180,96 340,118 520,106 C700,94 840,114 1010,104 C1180,94 1300,112 1440,102 L1440,120 L0,120 Z"
+            />
+          </svg>
+        </div>
+        <div className="hero-inner">
+          <h1 id="hero-title">Know your field&rsquo;s weather, not the region&rsquo;s</h1>
+          <p>
+            {historyYears(currentYear)} years of daily weather for one point in Texas — with the
+            data source named, never hidden.
+          </p>
+        </div>
+      </header>
+
       <div className="shell">
         {/* Phone-only twin of the theme control. Same state, so the two can
             never disagree. */}

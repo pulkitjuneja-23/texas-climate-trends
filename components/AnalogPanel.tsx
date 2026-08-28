@@ -541,6 +541,14 @@ export default function AnalogPanel({
                   {/* The dropdown IS the heading, so the column names itself
                       after whatever is being shown. Only crops this county
                       actually reports are listed. */}
+                  {/*
+                    The unit rides INSIDE the option text rather than sitting on
+                    a line of its own. That removes a second row from the header
+                    — the column was noticeably taller than its neighbours — and
+                    it earns its place in the list too: these crops genuinely do
+                    not share a unit, so "Cotton (upland) · lb/ac" beside "Corn
+                    (grain) · bu/ac" is information, not decoration.
+                  */}
                   <select
                     aria-label="Crop"
                     value={crop.id}
@@ -548,11 +556,10 @@ export default function AnalogPanel({
                   >
                     {yields!.crops.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.label}
+                        {c.label} · {yieldUnitView(c, units).label}
                       </option>
                     ))}
                   </select>
-                  <span className="yield-unit">{uv!.label}</span>
                 </th>
               )}
             </tr>

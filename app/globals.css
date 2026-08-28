@@ -11,9 +11,25 @@
 :root {
   color-scheme: light;
 
-  --plane: #f9f9f7;
-  --surface: #fcfcfb;
+  /*
+    EARTH-TONED SURFACES ONLY.
+    The page ground is warmed toward soil and dry grass so the site reads as a
+    working tool for land rather than a blank report. The SERIES, DIVERGING and
+    BAND tokens below are deliberately untouched: they are the validated
+    data-viz instance, and re-tinting them would invalidate the contrast checks
+    the end-labels and table views were added to satisfy. Warmth stays on the
+    furniture; the data stays neutral.
+  */
+  --plane: #f4efe6;
+  --surface: #fffdf9;
   --surface-raised: #ffffff;
+
+  /* Landscape accents — chrome only, never used to encode a value. */
+  --sky-high: #cfe2f2;
+  --sky-low: #eadfc9;
+  --field-far: #b9c39a;
+  --field-near: #8ea36f;
+  --soil: #6b4f36;
 
   --text-primary: #0b0b0b;
   --text-secondary: #52514e;
@@ -55,9 +71,17 @@
   :root:not([data-theme="light"]) {
     color-scheme: dark;
 
-    --plane: #0d0d0d;
-    --surface: #1a1a19;
-    --surface-raised: #232322;
+    /* Warmed a touch toward soil, so dark mode is the same room at night
+       rather than a different site. */
+    --plane: #12100e;
+    --surface: #1c1a17;
+    --surface-raised: #252220;
+
+    --sky-high: #1d2c3a;
+    --sky-low: #2b2519;
+    --field-far: #3a4430;
+    --field-near: #4a5a3a;
+    --soil: #8a6c4d;
 
     --text-primary: #ffffff;
     --text-secondary: #c3c2b7;
@@ -158,6 +182,79 @@ h3 {
 
 a {
   color: var(--series-1);
+}
+
+/* ---------- hero ---------- */
+
+/*
+  The one piece of scenery on the page, and it is confined to the top.
+
+  It exists to make the site read as a place rather than a report, which was
+  the whole complaint. Everything below it stays on the neutral surface the
+  chart palette was validated against — scenery behind a plot is exactly how a
+  contrast check gets quietly undone.
+*/
+.hero {
+  position: relative;
+  isolation: isolate;
+  background: linear-gradient(to bottom, var(--sky-high), var(--sky-low));
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.hero-sky {
+  position: absolute;
+  inset: auto 0 -1px 0;
+  height: 120px;
+  line-height: 0;
+  z-index: -1;
+}
+
+.hero-sky svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.hero-ridge-far {
+  fill: var(--field-far);
+}
+
+.hero-ridge-near {
+  fill: var(--field-near);
+}
+
+.hero-inner {
+  max-width: min(1680px, 94vw);
+  margin: 0 auto;
+  padding: 40px 20px 92px;
+}
+
+.hero-inner h1 {
+  margin: 0 0 8px;
+  font-size: clamp(1.5rem, 3.2vw, 2.3rem);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  /* Dark ink on a pale sky. Deliberately NOT white-on-image: the sky is light
+     at the top in light mode, and white text there fails contrast outright. */
+  color: var(--text-primary);
+  max-width: 22ch;
+}
+
+.hero-inner p {
+  margin: 0;
+  max-width: 60ch;
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 700px) {
+  .hero-inner {
+    padding: 24px 16px 64px;
+  }
+  .hero-sky {
+    height: 80px;
+  }
 }
 
 /* ---------- layout ---------- */
@@ -798,7 +895,12 @@ td:first-child {
 
 thead th {
   background: var(--band-outer);
-  color: var(--text-secondary);
+  /*
+    Darker than --text-secondary. Uppercase at 0.7rem with letter-spacing is
+    already working against legibility, and these headers name what every number
+    beneath them means — they were the faintest text on the densest table.
+  */
+  color: var(--text-primary);
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -868,7 +970,7 @@ tbody tr:last-child td {
 .analog-table th.yield-head {
   padding-top: 3px;
   padding-bottom: 3px;
-  min-width: 118px;
+  min-width: 150px;
 }
 
 .analog-table th.yield-head select {
@@ -897,15 +999,6 @@ tbody tr:last-child td {
 .analog-table th.yield-head select:focus-visible {
   border-color: var(--border-strong);
   background-color: var(--surface);
-}
-
-.analog-table th.yield-head .yield-unit {
-  display: block;
-  padding-left: 5px;
-  font-size: 0.6rem;
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
 }
 
 /*
