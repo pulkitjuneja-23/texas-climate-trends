@@ -173,9 +173,19 @@ export default function LocationPicker({
 
   return (
     <div>
-      <div className="controls" style={{ marginBottom: 10, gap: 8 }}>
+      {/*
+        No "Find your field by" label above the buttons. The card is already
+        headed "Your location" and the buttons say "Town or city" and
+        "Coordinates" — a third line saying the same thing a third time cost a
+        whole row of the card's height for nothing. `align-items: flex-end`
+        keeps this row level with the crop select, which does still need a label
+        because "Corn / sorghum" alone would not say what it selects.
+      */}
+      <div
+        className="controls loc-controls"
+        style={{ marginBottom: 10, gap: 8, alignItems: "flex-end" }}
+      >
         <div className="field">
-          <label>Find your field by</label>
           <div className="seg">
             {/*
               "Town or city", not "Address".
@@ -197,7 +207,6 @@ export default function LocationPicker({
           </div>
         </div>
         <div className="field">
-          <label>&nbsp;</label>
           <button onClick={useMyLocation} disabled={locating}>
             {locating ? "Locating…" : "📍 Use my location"}
           </button>

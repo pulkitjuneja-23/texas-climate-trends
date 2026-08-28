@@ -1477,6 +1477,105 @@ through CDP (6 lines drawn, swatches switch, table survives, state resets on
 leaving the panel), and no horizontal overflow at 390/360/320 px across all
 four panels.
 
+### 2026-08-28 (later) — Sticky masthead, average line, and the toggle that had to go
+
+Second user review of the same day. **Not deployed.**
+
+#### The masthead is fixed to the top now
+
+It was on the photograph, which looked better and scrolled away — and the source
+picker is the one control that has to be reachable from anywhere, because it
+changes every number below it. A source you cannot see or change while looking
+at a chart is exactly the hidden default this project exists to argue against.
+
+- **`position: sticky`, not `fixed`, and self-sizing.** A fixed bar needs a body
+  offset that exactly matches its height, and that height changes at the mobile
+  breakpoint where the source picker takes its own row. Sticky stays in flow, so
+  it measures itself and nothing can end up underneath it. `z-index: 1200`
+  clears Leaflet's control layer as before.
+- **Deliberately dark in both themes.** It is chrome, sitting directly above a
+  photograph, so a light bar in light mode would cut a bright stripe between the
+  page and the picture. It also keeps the masthead's literal light colours
+  correct — they were written for a dark scrim.
+- **The hero scrim is now much lighter and the photo shorter** (`clamp(150px,
+  17vw, 240px)`): the heavy top-down gradient existed to carry white text that
+  has moved out.
+- **Mobile: 162px → ~92px.** Left alone it stacked into three rows and took a
+  fifth of an 844px screen permanently. The tagline is hidden, the units control
+  keeps its natural width instead of obeying the global `.seg { width: 100% }`
+  phone rule, and `.topbar-source` gets `order: 2` so the two short items share
+  the first row. The source picker keeps its own full-width row — that is what
+  stops its menu hanging off the edge (see the 2026-08-25 note).
+- **The photo credit line is gone.** USDA public domain requires no attribution;
+  the provenance lives in `public/img/CREDITS.md`. A caption on a decorative
+  photograph is furniture, not information.
+- The source badge is also gone from **Season so far** — the picker is on screen
+  at all times now, so repeating it was clutter.
+- **"Find your field by" removed** from the location card. The card is headed
+  "Your location" and the buttons say "Town or city" and "Coordinates"; a third
+  line saying it again cost a whole row. The row is `align-items: flex-end` so
+  it still sits level with the crop select, which does keep its label.
+
+#### The average line was invisible
+
+User: *"the dotted line is a trend but looks like mean."* It was drawn — as a
+1px hairline in `--baseline`, the faintest colour on the page — so the only
+visible horizontal line was the dashed trend, and reading it as the average was
+the reasonable conclusion.
+
+- Now `--normal-line` at 2px, and **declared AFTER the `<Line>`**. Declaration
+  order is paint order in Recharts, and where the trend is nearly flat — the
+  common case for rainfall, and itself the finding — the two coincide and
+  whichever is painted second survives. The average is what every bar is
+  measured against, so it is the one that must stay continuous.
+- Both lines are named in the legend with **line marks, not swatches** — the
+  distinction is solid-versus-dashed and a square cannot carry it. Solid means
+  measured, dashed means fitted, same as the season chart. The figure export
+  legend gained the average for the same reason.
+- Verified on `?trend=tmax`, where the two separate visibly.
+
+#### Comparison figures: brackets, and green up / red down
+
+`(+2.0)` / `(−7.2)` beside each analog value, green where that year ran higher,
+red where lower. Brackets because the delta is an annotation on the number to
+its left, not a second measurement beside it.
+
+**GREEN AND RED MEAN HIGHER AND LOWER HERE, NOT GOOD AND BAD** — and that is a
+deliberate trade, stated under the table because it has to be. More rain than
+this year reads correctly as green; a higher August average high reads as green
+too, and nobody wants a hotter August. The alternative was per-column semantics
+(green for wetter, green for cooler), which is truer cell by cell and much worse
+to read: the reader would have to know which convention each column was on
+before a colour meant anything. As a pure direction indicator the whole table
+scans in one pass.
+
+New `--up` / `--down` tokens rather than reusing `--div-warm`/`--div-cool`:
+those encode HOT across the app, and red meaning "hotter" in one place and
+"less" in another is exactly the collision to avoid. Set for text contrast
+(5.8:1 and 4.7:1 light, 7.5:1 and 5.7:1 dark) — `--good` was not reused because
+it is tuned as a fill for the confidence bar and is too light as small type.
+
+#### The irrigated / dryland toggle is gone
+
+User: *"I looked at irrigated, it was blank, dryland, blank again but all had
+values populated, so what is it, it must be either irrigated or dryland."*
+
+The toggle was not broken — it was offering options that county does not
+publish. NASS reports the practice split for only some crops in some counties,
+so in most places "All production practices" is the only series that exists and
+the other two buttons were an invitation to empty columns. **A control whose
+options are usually empty is worse than no control: it makes a complete answer
+look like a broken feature.**
+
+`bestPractice()` now picks the series with the most reported years, and the
+choice is named — in the dropdown option and in the note — **only when it is not
+the plain county-wide figure**. Writing "· all" on nine options in ten would be
+noise; naming the exception is what carries meaning.
+
+Worth recording why this cannot be solved by asking the grower whether their
+field is irrigated: the constraint is what USDA published for their county, not
+what they do on their own acres.
+
 ## Next up
 
 Items 1, 4 and 7 of the original list are done (gridMET as a source, OpenET, shipped to Vercel).

@@ -659,22 +659,19 @@ export default function Page() {
   return (
     <>
       {/*
-        Masthead ON the photograph — there is no separate ribbon above it.
-        A cotton harvester cutting rows at Batesville, Texas; public domain
-        (USDA), so it carries no licence risk when the repo goes public.
+        The masthead is FIXED to the top of the window, on its own ground.
 
-        TRADE-OFF WORTH KNOWING: the source picker used to live in a sticky bar
-        precisely so it could be changed from anywhere on the page. It scrolls
-        away now. If that turns out to matter, the fix is a slim bar that
-        appears on scroll, not restoring the old ribbon.
+        It used to sit on the photograph, which looked better but scrolled away
+        — and the source picker is the one control a reader needs from anywhere
+        on the page, because it changes every number below it. A source you
+        cannot see or change while looking at a chart is exactly the hidden
+        default this project exists to argue against.
 
-        The dark gradient under the photo is not decoration — it is what makes
-        the masthead legible, and it is also the fallback if the image never
-        arrives on a slow rural connection.
+        It carries only what has to be reachable: the name, the source, the
+        units, the theme. Everything else belongs in the page.
       */}
-      <header className="hero">
-        <div className="hero-photo" aria-hidden="true" />
-        <div className="hero-bar">
+      <div className="hero-bar">
+        <div className="hero-bar-inner">
           <div className="brand">
             <h1>Texas Climate Trends</h1>
             <small>{historyYears(currentYear)} years of weather history for your field</small>
@@ -710,7 +707,17 @@ export default function Page() {
             ))}
           </div>
         </div>
-        <p className="hero-credit">Batesville, Texas · USDA, public domain</p>
+      </div>
+
+      {/*
+        A cotton harvester cutting rows at Batesville, Texas. USDA, public
+        domain — no attribution is legally required and none is printed, which
+        is why the credit line that used to sit in the corner is gone. The
+        provenance lives in public/img/CREDITS.md, where it belongs: a caption
+        on a decorative photograph is furniture, not information.
+      */}
+      <header className="hero">
+        <div className="hero-photo" aria-hidden="true" />
       </header>
 
       <div className="shell">
@@ -763,10 +770,12 @@ export default function Page() {
             <div className="card">
               <div className="card-head">
                 <h2>Season so far</h2>
+                {/* The source badge is gone from here: the picker is now fixed
+                    to the top of the window, so the active source is on screen
+                    at all times and repeating it was clutter. */}
                 {history?.lastObserved && (
                   <span className="badge">through {formatDate(history.lastObserved)}</span>
                 )}
-                {history?.source && <span className="badge">{history.source.name}</span>}
               </div>
               {histLoading ? (
                 <div className="skeleton" style={{ height: 150 }} />

@@ -140,17 +140,51 @@ function fmtFeature(v: number, k: keyof AnalogFeatures, units: UnitSystem): stri
   return convert(v, q, units).toFixed(1);
 }
 
+/**
+ * The difference from this year, in brackets: `(+2.4)` / `(−1.1)`.
+ *
+ * Bracketed so it cannot be misread as a second measurement sitting beside the
+ * first — it is an annotation on the number to its left, and brackets are what
+ * says so without a word.
+ */
 function fmtDelta(v: number, k: keyof AnalogFeatures, units: UnitSystem): string {
   const q = QTY[k];
   const sign = v >= 0 ? "+" : "";
-  if (q === "rh") return `${sign}${Math.round(v)}`;
+  if (q === "rh") return `(${sign}${Math.round(v)})`;
   // A temperature DIFFERENCE converts with the ratio only — applying the +32
   // offset here would turn "2 degC warmer" into "35.6 degF warmer".
   if (q === "gdd") {
-    return `${sign}${Math.round(convert(v, "gdd", units)).toLocaleString()}`;
+    return `(${sign}${Math.round(convert(v, "gdd", units)).toLocaleString()})`;
   }
   const adj = convert(v, q === "temp" ? "tempDelta" : q, units);
-  return `${adj >= 0 ? "+" : ""}${adj.toFixed(1)}`;
+  return `(${adj >= 0 ? "+" : ""}${adj.toFixed(1)})`;
+}
+
+/**
+ * Green when that year ran HIGHER than this one, red when lower.
+ *
+ * ---------------------------------------------------------------------------
+ * READ THIS BEFORE CHANGING IT. Green and red mean HIGHER and LOWER here, not
+ * GOOD and BAD, and those are not the same thing in every column.
+ * ---------------------------------------------------------------------------
+ * More rain than this year is usually welcome and reads correctly as green. A
+ * higher average high in August is not welcome and reads as green anyway. The
+ * pair was chosen deliberately as a *direction* indicator so the whole table
+ * can be scanned in one pass — every column answers the same question the same
+ * way — and it is stated in the note under the table for exactly this reason.
+ *
+ * The alternative was per-column semantics: green for wetter, green for cooler.
+ * That is more truthful cell by cell and much worse to read, because the reader
+ * would have to know which convention each column was on before a colour meant
+ * anything.
+ *
+ * Deliberately NOT `--div-warm`/`--div-cool`. Those encode hot/cold across the
+ * rest of the app, and reusing them for up/down would make red mean "hotter" in
+ * one place and "less" in another.
+ */
+function deltaColor(v: number): string | undefined {
+  if (v === 0) return undefined;
+  return v > 0 ? "var(--up)" : "var(--down)";
 }
 
 /**
@@ -163,6 +197,31 @@ function headUnit(k: keyof AnalogFeatures, units: UnitSystem): string | null {
   const q = QTY[k];
   if (q === "rh" || q === "gdd") return null;
   return unitLabel(q, units);
+}
+
+/**
+ * Which of a crop's practice series to actually use here.
+ *
+ * The one with the most reported years, which in most counties is "All
+ * production practices" because it is the only one NASS published. Where a
+ * county DOES break the split out and one side has the fuller record, that side
+ * wins — a dryland series with twenty years beats an all-acres series with two.
+ */
+function bestPractice(
+  crop: { practices: string[] } | null | undefined,
+  data: { series: Record<string, { v: Array<number | null> }> } | undefined
+): PracticeId {
+  if (!crop || !data) return "all";
+  let best: PracticeId = (crop.practices[0] as PracticeId) ?? "all";
+  let bestN = -1;
+  for (const p of crop.practices as PracticeId[]) {
+    const n = data.series[p]?.v.filter((v) => v !== null).length ?? 0;
+    if (n > bestN) {
+      bestN = n;
+      best = p;
+    }
+  }
+  return best;
 }
 
 /** Renders a heading as label + a quieter unit, so the unit reads as a unit. */
@@ -190,7 +249,6 @@ export default function AnalogPanel({
   const [windowDays, setWindowDays] = useState(150);
   const [lookAhead, setLookAhead] = useState(60);
   const [cropId, setCropId] = useState<string | null>(null);
-  const [practice, setPractice] = useState<PracticeId>("all");
 
   /**
    * Whether the season chart is showing beneath the table.
@@ -240,18 +298,27 @@ export default function AnalogPanel({
   const crop = yields?.crops.find((c) => c.id === cropId) ?? bestCrop;
 
   /**
-   * The chosen practice, or the best available one for this crop.
+   * THE IRRIGATED / DRYLAND TOGGLE IS GONE, AND THE REASON MATTERS.
    *
-   * Only six of the ten crops publish an irrigated/dryland split at all, so a
-   * sticky "Dryland" selection would blank the column the moment the farmer
-   * switched to oats. Fall back rather than show nothing.
+   * A user tried it: "All" had figures, "Irrigated" was blank, "Dryland" was
+   * blank — and reasonably asked what the setting was even for, since a field
+   * is one or the other. The toggle was not broken; it was offering options
+   * this county does not publish. NASS reports the practice split for only some
+   * crops in some counties, so in most places "All" is the ONLY series that
+   * exists and the other two buttons were an invitation to empty columns.
+   *
+   * So the panel now picks the best-populated series itself, and says which one
+   * it picked in the dropdown when that is not the plain county-wide figure. A
+   * control whose options are usually empty is worse than no control: it makes
+   * a complete answer look like a broken feature.
+   *
+   * Note this cannot be resolved by asking the grower whether their field is
+   * irrigated. The constraint is what USDA published for their county, not what
+   * they do on their own acres.
    */
-  const activePractice: PracticeId =
-    crop && crop.practices.includes(practice)
-      ? practice
-      : ((crop?.practices[0] as PracticeId) ?? "all");
-
   const cropData = crop ? yields?.data[crop.id] : undefined;
+  const activePractice = bestPractice(crop, cropData);
+
   const series = cropData?.series[activePractice];
   const trend = cropData?.trend[activePractice];
 
@@ -564,26 +631,6 @@ export default function AnalogPanel({
             ))}
           </div>
         </div>
-        {/* Only offered when the county publishes a split — six of the ten
-            crops do. A toggle whose options blank the column is worse than no
-            toggle. */}
-        {crop && crop.practices.length > 1 && (
-          <div className="field">
-            <label>Yield from</label>
-            <div className="seg">
-              {(crop.practices as PracticeId[]).map((p) => (
-                <button
-                  key={p}
-                  aria-pressed={activePractice === p}
-                  title={PRACTICE_HELP[p]}
-                  onClick={() => setPractice(p)}
-                >
-                  {PRACTICE_LABELS[p]}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
         <div className="field" style={{ marginLeft: "auto" }}>
           <label>&nbsp;</label>
           <button aria-pressed={plotted} onClick={togglePlot}>
@@ -681,11 +728,19 @@ export default function AnalogPanel({
                     value={crop.id}
                     onChange={(e) => setCropId(e.target.value)}
                   >
-                    {yields!.crops.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.label} · {yieldUnitView(c, units).label}
-                      </option>
-                    ))}
+                    {yields!.crops.map((c) => {
+                      // Named only when it is NOT the plain county-wide figure.
+                      // Writing "· all" on nine options out of ten would be
+                      // noise; naming the exception is the whole point.
+                      const p = bestPractice(c, yields!.data[c.id]);
+                      return (
+                        <option key={c.id} value={c.id}>
+                          {c.label}
+                          {p !== "all" ? ` · ${PRACTICE_LABELS[p].toLowerCase()}` : ""} ·{" "}
+                          {yieldUnitView(c, units).label}
+                        </option>
+                      );
+                    })}
                   </select>
                 </th>
               )}
@@ -754,7 +809,10 @@ export default function AnalogPanel({
                 {featureKeys.map((k) => (
                   <td key={k}>
                     {fmtFeature(m.features[k], k, units)}
-                    <span className="muted" style={{ fontSize: "0.72rem", marginLeft: 5 }}>
+                    <span
+                      className="delta"
+                      style={{ color: deltaColor(m.deltas[k]) }}
+                    >
                       {fmtDelta(m.deltas[k], k, units)}
                     </span>
                   </td>
@@ -918,8 +976,16 @@ export default function AnalogPanel({
       <div className="small muted" style={{ marginTop: 10, lineHeight: 1.6 }}>
         Years are ranked against each other, closest first — the green blocks run dark to light in
         that order, and hovering one gives its score out of 100. That is a ranking within this
-        location&rsquo;s own record, not a probability. Small grey numbers are that year minus this
-        year.
+        location&rsquo;s own record, not a probability.{" "}
+        {/*
+          The colour convention, said plainly. It has to be said, because green
+          and red normally read as good and bad and here they do not: a higher
+          average high is green, and nobody wants a hotter August.
+        */}
+        Bracketed figures are that year minus this one —{" "}
+        <span style={{ color: "var(--up)", fontWeight: 600 }}>green where it ran higher</span>,{" "}
+        <span style={{ color: "var(--down)", fontWeight: 600 }}>red where it ran lower</span>. That
+        is direction only, not good or bad; a hotter year is green in the temperature columns.
         {result.skippedYears.length > 0 && (
           <> Years skipped for sparse data: {result.skippedYears.join(", ")}.</>
         )}
@@ -928,10 +994,23 @@ export default function AnalogPanel({
             {" "}
             <strong>{crop.label}</strong> yield is the average across all of{" "}
             <strong>{yields!.county.name} County</strong> — a much coarser thing than the weather
-            columns beside it, which come from the grid cell containing your pin. Hover or tap a
-            yield to see how far it sat above or below the long-term trend; that comparison is
-            against the trend rather than a flat average because thirty years of better genetics
-            would otherwise make every old year look like a failure. {yields!.attribution}.
+            columns beside it, which come from the grid cell containing your pin.{" "}
+            {/*
+              Only stated when the figure is NOT county-wide. Most counties
+              publish nothing else, so saying "all production practices" every
+              time would be noise; naming the exception is what carries meaning.
+            */}
+            {activePractice !== "all" && (
+              <>
+                USDA publishes no county-wide figure for this crop here, so these are{" "}
+                <strong>{PRACTICE_LABELS[activePractice].toLowerCase()} acres only</strong> —{" "}
+                {PRACTICE_HELP[activePractice].toLowerCase()}.{" "}
+              </>
+            )}
+            Hover or tap a yield to see how far it sat above or below the long-term trend; that
+            comparison is against the trend rather than a flat average because thirty years of
+            better genetics would otherwise make every old year look like a failure.{" "}
+            {yields!.attribution}.
           </>
         )}
         {/*

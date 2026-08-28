@@ -69,6 +69,20 @@
   --serious: #ec835a;
   --critical: #d03b3b;
 
+  /*
+    HIGHER / LOWER, for the comparison figures in the analog table.
+
+    Separate tokens from the diverging pair on purpose. `--div-warm` means HOT
+    across this app; reusing it for "less than this year" would make red mean
+    two different things on one screen. These two mean direction only.
+
+    Both are set for TEXT contrast rather than fill: 5.8:1 and 4.7:1 on this
+    surface. `--good` (#0ca30c) was not reused because it is tuned as a fill for
+    the confidence bar and is too light to read as small type.
+  */
+  --up: #177335;
+  --down: #c02f2f;
+
   --radius: 10px;
   --radius-sm: 6px;
   --shadow: 0 1px 2px rgba(11, 11, 11, 0.05), 0 4px 12px rgba(11, 11, 11, 0.04);
@@ -114,6 +128,10 @@
     --div-cool: #3987e5;
     --div-mid: #383835;
 
+    /* Lifted well clear of the dark ground: 7.5:1 and 5.7:1. */
+    --up: #4ec06e;
+    --down: #ef6a6a;
+
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
   }
 }
@@ -148,6 +166,10 @@
   --div-warm: #d03b3b;
   --div-cool: #3987e5;
   --div-mid: #383835;
+
+  /* Lifted well clear of the dark ground: 7.5:1 and 5.7:1. */
+  --up: #4ec06e;
+  --down: #ef6a6a;
 
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
 }
@@ -212,26 +234,25 @@ a {
 }
 
 /*
-  The photograph, plus the scrim that makes text on it legible.
+  The photograph.
 
-  A dark gradient over the LEFT of the image rather than a flat overlay across
-  all of it: the headline needs a dark ground, the crop rows on the right are
-  the reason the photo is there at all, and flattening the whole frame to make
-  one corner readable wastes the picture.
+  The scrim is now MUCH lighter than it was. It existed to carry white masthead
+  text; that text has moved into its own bar, so the only job left is a soft
+  darkening at the very top so the picture meets the bar without a hard seam,
+  and a touch at the bottom so the page's own ground does not start abruptly.
+  Everything in between is left as the photograph — which is the entire reason
+  it is there.
 */
 .hero-photo {
   position: absolute;
   inset: 0;
   z-index: -1;
-  /* Top-down now, because the masthead sits across the top rather than down
-     the left. Heavy enough at the very top to carry white text, clearing
-     quickly so the field itself is still the picture. */
   background-image: linear-gradient(
       to bottom,
-      rgba(12, 10, 8, 0.82) 0%,
-      rgba(12, 10, 8, 0.55) 32%,
-      rgba(12, 10, 8, 0.12) 62%,
-      rgba(12, 10, 8, 0.25) 100%
+      rgba(12, 10, 8, 0.34) 0%,
+      rgba(12, 10, 8, 0.08) 26%,
+      rgba(12, 10, 8, 0.06) 70%,
+      rgba(12, 10, 8, 0.22) 100%
     ),
     url("/img/hero-cotton.jpg");
   background-size: cover, cover;
@@ -239,41 +260,49 @@ a {
   background-repeat: no-repeat;
 }
 
-.hero-credit {
-  position: absolute;
-  right: 12px;
-  bottom: 8px;
-  margin: 0;
-  font-size: 0.62rem;
-  letter-spacing: 0.04em;
-  color: rgba(255, 255, 255, 0.62);
-}
-
-/* Enough height that the photograph reads as a place, not a strip. */
+/* Enough height that the photograph reads as a place, not a strip. Shorter
+   than it was: the masthead has moved off it into its own bar above, so the
+   picture no longer has to be tall enough to hold text as well. */
 .hero {
-  min-height: clamp(190px, 22vw, 300px);
+  min-height: clamp(150px, 17vw, 240px);
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
 }
 
 /*
-  The masthead, sitting on the photograph.
+  THE MASTHEAD IS FIXED TO THE TOP AND HAS ITS OWN GROUND.
 
-  Colours here are FIXED LIGHT VALUES, not theme tokens: the surface behind
-  them is a photograph with a dark scrim in both themes, so `--text-primary`
-  would flip to near-black in light mode and disappear. This is the one region
-  of the stylesheet where literal colours are correct.
+  `position: sticky` rather than `fixed`, and self-sizing rather than a magic
+  height: a fixed bar has to be paired with a body offset that exactly matches
+  its height, and that height changes at the mobile breakpoint where the source
+  picker takes its own row. Sticky keeps the element in flow, so it measures
+  itself and nothing below it can end up underneath it.
+
+  DELIBERATELY DARK IN BOTH THEMES. The bar is chrome, and it sits directly
+  above a photograph whose top edge is dark, so a light bar in light mode would
+  cut a bright stripe between the page and the picture. Keeping it dark also
+  keeps the literal colours below correct — they were written for a dark scrim
+  and would need converting to tokens for no gain.
+
+  z-index 1200 clears Leaflet's control layer (1000), or the map's zoom buttons
+  punch through the bar as the map scrolls underneath it.
 */
 .hero-bar {
-  position: relative;
-  /* `width: 100%` is load-bearing: .hero is a flex column, so a child with
-     `margin: 0 auto` and no width shrinks to its content and centres, which
-     pulled the whole masthead into the middle of the photograph. */
-  width: 100%;
+  position: sticky;
+  top: 0;
+  z-index: 1200;
+  background: rgba(26, 20, 15, 0.94);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.hero-bar-inner {
   max-width: min(1680px, 94vw);
   margin: 0 auto;
-  padding: 22px 20px;
+  /* Just tall enough for the name and the three controls, and no taller — the
+     bar costs this much of every screen on every scroll. */
+  padding: 9px 20px;
   display: flex;
   align-items: center;
   gap: 14px;
@@ -285,28 +314,30 @@ a {
   margin-right: auto;
 }
 
+/*
+  Literal light colours, not tokens: the bar's ground is dark in BOTH themes
+  (see above), so `--text-primary` would flip to near-black in light mode and
+  disappear. This is the one region of the stylesheet where literals are right.
+*/
 .hero-bar .brand h1 {
   margin: 0;
-  font-size: 1.18rem;
+  font-size: 1.1rem;
   font-weight: 700;
   letter-spacing: -0.01em;
   color: #ffffff;
-  text-shadow: 0 1px 14px rgba(0, 0, 0, 0.5);
 }
 
 .hero-bar .brand small {
   display: block;
-  margin-top: 2px;
-  font-size: 0.76rem;
-  color: rgba(255, 255, 255, 0.82);
-  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.45);
+  margin-top: 1px;
+  font-size: 0.73rem;
+  color: rgba(255, 255, 255, 0.78);
 }
 
-/* Controls need their own ground to be legible over a photograph. */
+/* Controls sit a shade lighter than the bar so they read as controls. */
 .hero-bar .seg {
-  background: rgba(18, 15, 12, 0.55);
-  border-color: rgba(255, 255, 255, 0.26);
-  backdrop-filter: blur(6px);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.24);
 }
 
 .hero-bar .seg button {
@@ -321,10 +352,9 @@ a {
 /* The source picker's own trigger, same treatment. */
 .hero-bar .src-trigger,
 .hero-bar button.src-trigger {
-  background: rgba(18, 15, 12, 0.55);
-  border-color: rgba(255, 255, 255, 0.26);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.24);
   color: #ffffff;
-  backdrop-filter: blur(6px);
 }
 
 @media (max-width: 700px) {
@@ -537,6 +567,31 @@ button:disabled {
   height: 10px;
   border-radius: 3px;
   flex: none;
+}
+
+/*
+  Legend marks for LINES, as opposed to the square swatch used for a colour.
+
+  A line in a legend has to be drawn as a line: the difference the reader needs
+  is solid-versus-dashed, and a square cannot carry that. Solid means measured
+  (the average of the bars), dashed means fitted (the trend) — the same
+  convention the season chart uses.
+*/
+.lg-line {
+  display: inline-block;
+  width: 16px;
+  height: 0;
+  margin-right: 5px;
+  vertical-align: 3px;
+  flex: none;
+}
+
+.lg-mean {
+  border-top: 2px solid var(--normal-line);
+}
+
+.lg-trend {
+  border-top: 2px dashed var(--text-primary);
 }
 
 .chip-row {
@@ -1615,6 +1670,23 @@ tbody tr:last-child td {
 }
 
 /*
+  The difference from this year, bracketed and coloured by direction.
+
+  Green HIGHER, red LOWER — a direction, not a verdict. See `deltaColor` in
+  AnalogPanel for why that is deliberate and why these are their own tokens
+  rather than the diverging hot/cold pair used everywhere else.
+
+  Kept a size down and at normal weight so it stays subordinate to the
+  measurement it annotates; colour is doing the work, not weight.
+*/
+.delta {
+  margin-left: 5px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+/*
   The season chart, opened underneath the table on request.
 
   Separated by a rule rather than nested in another card: it is the same
@@ -1821,6 +1893,54 @@ tbody tr:last-child td {
   .topbar-inner {
     gap: 10px 12px;
     padding: 10px 14px;
+  }
+
+  /*
+   * THE STICKY BAR HAS TO EARN ITS HEIGHT ON A PHONE.
+   *
+   * Left alone it stacked into three rows — name, source, units — and took 162
+   * of an 844px screen permanently, which is a fifth of the viewport gone
+   * before any weather appears. Two changes bring it to about half that:
+   *
+   *   the tagline goes, because the name alone identifies the site and a
+   *   subtitle you have already read is not worth a band on every screen;
+   *
+   *   the units control keeps its natural width instead of obeying the global
+   *   `.seg { width: 100% }` phone rule, so it shares the first row with the
+   *   name rather than claiming a third.
+   *
+   * The source picker keeps its own full-width row — see the note above; that
+   * is what stops its menu hanging off the edge, and it is the one control here
+   * that has to be reachable, which is the whole reason the bar is sticky.
+   */
+  .hero-bar-inner {
+    padding: 7px 14px;
+    gap: 8px;
+  }
+
+  .hero-bar .brand small {
+    display: none;
+  }
+
+  .hero-bar .brand h1 {
+    font-size: 1rem;
+  }
+
+  .hero-bar .seg {
+    width: auto;
+    flex: 0 0 auto;
+  }
+
+  /*
+   * Source LAST, so the two short items share the first row.
+   *
+   * In source order it sits between the name and the units, and because it is
+   * full-width it pushed the units onto a third line — the name got a row to
+   * itself with the whole right half empty. Reordering costs nothing here: the
+   * bar is four controls with no reading order to preserve.
+   */
+  .hero-bar .topbar-source {
+    order: 2;
   }
 
   .shell {

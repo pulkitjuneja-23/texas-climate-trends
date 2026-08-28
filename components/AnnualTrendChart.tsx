@@ -235,7 +235,11 @@ export default function AnnualTrendChart({
         legend: [
           { label: def.low, varName: def.warmIsHigh ? "--div-cool" : "--div-warm", kind: "band" as const },
           { label: def.high, varName: def.warmIsHigh ? "--div-warm" : "--div-cool", kind: "band" as const },
-          { label: "Trend", varName: "--text-primary", kind: "dash" as const },
+          // Both lines, for the same reason the on-screen legend names both: an
+          // exported figure with only "Trend" leaves the solid level line, which
+          // every bar is measured against, completely unexplained.
+          { label: `${data.length}-year average`, varName: "--normal-line", kind: "line" as const },
+          { label: "Long-term trend", varName: "--text-primary", kind: "dash" as const },
         ],
       },
       filename: `${slug(
@@ -286,15 +290,19 @@ export default function AnnualTrendChart({
         )}
       </div>
       <p className="card-sub">
-        One bar per completed year, colored by how far it sat from the {data.length}-year average.
+        One bar per completed year, colored by how far it sat from the {data.length}-year average —
+        the <strong>solid</strong> level line.
         {trend && trend.r2 < 0.15 ? (
           <>
             {" "}
-            The dashed trend line is <strong>weak here</strong> — the swing between years is far
-            bigger than the long-term drift, so read the bars, not the line.
+            The <strong>dashed</strong> trend line is <strong>weak here</strong> — the swing between
+            years is far bigger than the long-term drift, so read the bars, not the line.
           </>
         ) : (
-          <> The dashed line is the long-term trend.</>
+          <>
+            {" "}
+            The <strong>dashed</strong> sloping line is the long-term trend.
+          </>
         )}
       </p>
 
@@ -366,7 +374,6 @@ export default function AnnualTrendChart({
               domain={quantity === "temp" ? ["auto", "auto"] : [0, "auto"]}
               tickFormatter={(v: number) => v.toFixed(0)}
             />
-            <ReferenceLine y={mean} stroke="var(--baseline)" strokeWidth={1} />
             <Bar dataKey="value" radius={[4, 4, 0, 0]} isAnimationActive={false}>
               {data.map((d) => (
                 <Cell key={d.year} fill={barColor(d.anomaly)} />
@@ -380,6 +387,30 @@ export default function AnnualTrendChart({
               dot={false}
               isAnimationActive={false}
               activeDot={false}
+            />
+            {/*
+              THE AVERAGE, DRAWN SO IT CAN BE SEEN — AND DRAWN LAST.
+
+              It was a 1px hairline in the faintest colour on the page, so the
+              only visible horizontal line was the dashed trend and a reader
+              reasonably took that for the average. Two lines meaning completely
+              different things must not be told apart by which one you can see.
+
+              Declaration order is paint order in Recharts, so this sits AFTER
+              the trend deliberately. Where the trend is nearly flat — which is
+              the common case for rainfall, and is itself the finding — the two
+              lie on top of each other, and whichever is painted second is the
+              one that survives. The average is the reference every bar is
+              measured against, so it is the one that must stay continuous.
+
+              Solid means measured, dashed means fitted; same convention as the
+              season chart, and the legend below names both.
+            */}
+            <ReferenceLine
+              y={mean}
+              stroke="var(--normal-line)"
+              strokeWidth={2}
+              ifOverflow="extendDomain"
             />
             <Tooltip
               cursor={{ fill: "color-mix(in srgb, var(--text-muted) 12%, transparent)" }}
@@ -437,6 +468,24 @@ export default function AnnualTrendChart({
           />
           {def.high}
         </span>
+        {/*
+          Both lines named, with their own marks. Without this the two are only
+          told apart by slope, which is no help at all in a flat-trend year —
+          and the average is the line every bar is being compared against, so it
+          is the one that most needs saying out loud.
+        */}
+        {/* No value here — the head-stat above already prints it, and saying
+            the same number twice on one card reads as two different facts. */}
+        <span className="small muted">
+          <i className="lg-line lg-mean" aria-hidden="true" />
+          {data.length}-year average
+        </span>
+        {trend && (
+          <span className="small muted">
+            <i className="lg-line lg-trend" aria-hidden="true" />
+            Long-term trend
+          </span>
+        )}
         {excludedCurrent && (
           <span className="small muted">· {currentYear} excluded — season still in progress</span>
         )}
