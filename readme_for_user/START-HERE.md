@@ -228,8 +228,22 @@ Three more things about this column:
   its own trend, so the statewide rate was used instead, set to your county's own average level.
 
 The current year says **"not yet"** — the figures are published the spring after harvest. The
-**Typical year** row shows what a normal year yields *now*, rather than an average of the years
+**30-year Normal** row shows what a normal year yields *now*, rather than an average of the years
 above, which would be dragged down by thirty years of older seed.
+
+**If the column is mostly dashes, that is usually real.** USDA only publishes a county figure where
+enough farms grow the crop, and much of Texas simply doesn't. Sixteen counties have exactly one
+crop and thirty-one have none at all — the Hill Country south-west of Austin is ranch land, so
+Bandera County has one single year of wheat in thirty. When that happens the page now tells you so
+underneath the table, in words, and the dropdown opens on whichever crop has the longest record for
+your county rather than the most important one statewide. If it still looks thin, try the other
+crops in the list.
+
+**"none" means the crop failed.** USDA sometimes publishes a yield of zero — a crop planted but
+never harvested, usually in a drought year. Those years are shown as "none" rather than "0", and
+they are deliberately left out of the long-term trend: a failed crop is the *absence* of a yield,
+not a low one, and counting it would drag the "normal" down and make every other year look better
+than it was.
 
 **6. Next month prediction** — the forecast
 Three levels, deliberately kept apart because they are not equally trustworthy:

@@ -377,6 +377,9 @@ const stateRates = new Map<string, StateTrendRate>();
         const years = acc.get(k)!;
         for (const [y, v] of byYear) {
           if (y >= thisYear) continue;
+          // See ZERO YIELDS below — a failed harvest is not a point on a
+          // productivity trend.
+          if (v <= 0) continue;
           if (!years.has(y)) years.set(y, []);
           years.get(y)!.push(v);
         }
@@ -434,8 +437,22 @@ for (const [county, byCrop] of bag) {
        * Fit on COMPLETE years only. The in-progress year has no harvest, and
        * NASS would not publish one - but excluding it explicitly means a
        * mid-season refresh can never drag the trend line down.
+       *
+       * ZERO YIELDS ARE EXCLUDED FROM THE FIT, AND KEPT IN THE SERIES.
+       *
+       * NASS really does publish 0 - 133 times in 23,544 values, clustered in
+       * drought years like 2000 and 2006. Verified against the source, not a
+       * parsing fault. A zero is a failed or unharvested crop, and it belongs
+       * in the table: "in a year like this one, the oat crop came to nothing"
+       * is exactly what the analog panel is for.
+       *
+       * But it is NOT a point on a yield TREND. The trend answers "what would a
+       * normal year give", and a total failure is the absence of a yield rather
+       * than a low one. Left in, three zeros dragged Blanco County's oat normal
+       * to 31 bu/ac when the years that actually produced a crop ran 21-60.
+       * That understated baseline then flatters every other year's comparison.
        */
-      const fitYears = years.filter((y) => y < thisYear);
+      const fitYears = years.filter((y) => y < thisYear && byYear.get(y)! > 0);
       const fitValues = fitYears.map((y) => byYear.get(y)!);
 
       // Its own slope where the record supports one; the statewide rate

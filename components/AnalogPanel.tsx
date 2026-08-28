@@ -121,16 +121,40 @@ export default function AnalogPanel({
   const [practice, setPractice] = useState<PracticeId>("all");
 
   /**
-   * Which crop the column shows.
+   * Which crop to open on: the BEST REPORTED one in this county, not the first.
    *
-   * Falls back to the county's first available crop rather than a fixed
-   * default, because the store already orders crops by Texas importance and a
-   * county that does not grow the default would otherwise open on an empty
-   * column. Re-resolved on every render so changing location to a county
-   * without the selected crop recovers instead of showing blanks.
+   * The store orders crops by statewide importance, and opening on that order
+   * was wrong in exactly the places it matters. In Bandera County NASS has one
+   * year of wheat and eight of oats; the panel opened on wheat, showed a column
+   * of dashes, and gave no hint that oats was sitting in the dropdown with
+   * eight times the record. A user reported precisely this, southwest of
+   * Austin, and reasonably assumed it was a bug.
+   *
+   * Statewide importance is the right ORDER for the dropdown — it stays
+   * predictable — but the wrong default for a specific field.
    */
-  const crop =
-    yields?.crops.find((c) => c.id === cropId) ?? yields?.crops[0] ?? null;
+  const bestCrop = useMemo(() => {
+    if (!yields?.crops.length) return null;
+    let best = yields.crops[0];
+    let bestN = -1;
+    for (const c of yields.crops) {
+      const s = yields.data[c.id]?.series;
+      const n = s
+        ? Math.max(...Object.values(s).map((x) => x.v.filter((v) => v !== null).length))
+        : 0;
+      if (n > bestN) {
+        bestN = n;
+        best = c;
+      }
+    }
+    return best;
+  }, [yields]);
+
+  /**
+   * Re-resolved every render, so moving to a county that does not grow the
+   * selected crop recovers instead of showing blanks.
+   */
+  const crop = yields?.crops.find((c) => c.id === cropId) ?? bestCrop;
 
   /**
    * The chosen practice, or the best available one for this crop.
@@ -295,6 +319,25 @@ export default function AnalogPanel({
   // closure declared after the early return.
   const currentYear = result.currentYear;
 
+  /**
+   * How much of this crop's record actually exists here.
+   *
+   * A column of dashes reads as a broken feature when it is really an honest
+   * report that NASS never published a figure — many Hill Country counties are
+   * ranch land with almost no row crop, and 16 Texas counties have exactly one
+   * crop. The project has hit this class of bug three times already (the trend
+   * chart's dropped years, the sparse-station tiles): coverage-based emptiness
+   * must always be DISCLOSED, never silent.
+   */
+  const yieldCoverage = (() => {
+    if (!crop || !series) return null;
+    const reported = series.v.filter((v) => v !== null).length;
+    const matched = result.matches.filter(
+      (m) => yieldAt(series, m.year) !== null
+    ).length;
+    return { reported, matched, shown: result.matches.length };
+  })();
+
   function yieldCell(year: number) {
     if (yieldsLoading) return <span className="muted">…</span>;
     if (!crop || !series || !uv) return <span className="muted">n/a</span>;
@@ -305,6 +348,30 @@ export default function AnalogPanel({
     // different things and only one of them is a gap in the record.
     if (raw === null) {
       return <span className="muted">{year >= currentYear ? "not yet" : "—"}</span>;
+    }
+
+    /**
+     * NASS publishes a literal 0 for a crop that failed or was never taken to
+     * harvest — 133 times in 23,544 Texas values, clustered in drought years.
+     * Real data, but "0.0" beside "-100%" reads as a broken cell rather than
+     * the outcome it is, so say it in words. The percentage is dropped: "none"
+     * already carries the whole meaning, and -100% is the same number every
+     * time regardless of what normal was.
+     */
+    if (raw === 0) {
+      return (
+        <span
+          className="muted"
+          title={
+            `NASS published a zero yield for ${year} — no harvest was recorded in this ` +
+            `county. Zero years are shown here but left out of the long-term trend, since a ` +
+            `failed crop is the absence of a yield rather than a low one.`
+          }
+          style={{ borderBottom: "1px dotted currentColor" }}
+        >
+          none
+        </span>
+      );
     }
 
     const shown = (raw * uv.factor).toFixed(uv.decimals);
@@ -587,7 +654,15 @@ export default function AnalogPanel({
             */}
             {result.averages && (
               <tr className="avg-row">
-                <td style={{ fontWeight: 650 }}>Typical year</td>
+                {/*
+                  Counts the years actually averaged rather than printing a
+                  flat "30". With a full record it reads exactly "30-year
+                  Normal" as intended, but a sparse airport station or a
+                  location with skipped years would otherwise be labelled with a
+                  sample size it does not have — the same rule the trend chart
+                  follows.
+                */}
+                <td style={{ fontWeight: 650 }}>{result.candidateYears.length}-year Normal</td>
                 <td className="muted">avg</td>
                 {featureKeys.map((k) => (
                   <td key={k}>{fmtFeature(result.averages!.features[k], k, units)}</td>
@@ -709,6 +784,26 @@ export default function AnalogPanel({
             yield to see how far it sat above or below the long-term trend; that comparison is
             against the trend rather than a flat average because thirty years of better genetics
             would otherwise make every old year look like a failure. {yields!.attribution}.
+          </>
+        )}
+        {/*
+          Say why the column is empty. Dashes alone read as a broken feature
+          when they are really an accurate report that nothing was published.
+        */}
+        {crop && yieldCoverage && yieldCoverage.matched < yieldCoverage.shown && (
+          <>
+            {" "}
+            <strong>
+              Only {yieldCoverage.matched} of the {yieldCoverage.shown} matched years
+            </strong>{" "}
+            {yieldCoverage.matched === 1 ? "has" : "have"} a reported {crop.label.toLowerCase()}{" "}
+            yield here — NASS published one for {yieldCoverage.reported} of the last{" "}
+            {result.candidateYears.length} years in {yields!.county.name} County. That is the
+            record being thin, not a fault: much of the Hill Country is ranch land and some
+            counties report only one crop.
+            {yields!.crops.length > 1 && (
+              <> Another crop in the dropdown may have a fuller record here.</>
+            )}
           </>
         )}
       </div>

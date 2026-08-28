@@ -1178,6 +1178,49 @@ decouple this from the weather grid.
 - Crops a county never reports are absent from the dropdown; a practice toggle is only offered when
   that crop publishes the split (6 of 10 do).
 
+#### 2026-08-28 follow-ups — sparse counties, and NASS's zeros
+
+**User report: "south west of Austin showed only wheat, and only one of the top 5 years."** Checked
+our store against NASS row by row for those counties: **not a bug.** The Hill Country is ranch land.
+
+| County | What NASS actually holds |
+|---|---|
+| Bandera | wheat **1 year**, oats 8 |
+| Blanco | wheat 2, oats 6 |
+| Kendall | wheat 4, oats 12 |
+| Williamson (contrast) | corn 30, cotton 29, wheat 27 |
+
+Statewide, **16 counties have one crop, 31 have none**. Two real UX faults behind the confusion,
+both fixed:
+
+1. **The dropdown opened on the first crop in STATEWIDE importance order**, not the best-reported
+   one here — so Bandera opened on wheat's single year while oats' eight sat unseen in the
+   dropdown. It now opens on whichever crop has the longest record in that county. The dropdown
+   ORDER stays statewide-importance (predictable); only the default changed.
+2. **An empty column said nothing.** Now: *"Only 0 of the 5 matched years have a reported oats
+   yield here — NASS published one for 8 of the last 30 years in Bandera County."* Same rule as the
+   trend chart's dropped years and the sparse-station tiles — **coverage-based emptiness must be
+   disclosed, never silent.** That is the fourth time this class has come up.
+
+**NASS PUBLISHES LITERAL ZERO YIELDS — 133 of 23,544 values (0.57%),** clustered in drought years
+(2000, 2006). Verified against the source; not a parsing fault. A zero is a crop that failed or was
+never taken to harvest.
+
+- **Kept in the series and shown as "none"**, not "0.0". A bare 0 beside "-100%" reads as a broken
+  cell rather than the outcome it is, and the percentage adds nothing — a zero is -100% every time
+  regardless of what normal was.
+- **Excluded from the trend fit**, including the statewide rate and the anchor mean. A total failure
+  is the *absence* of a yield, not a low one. Left in, three zeros dragged Blanco County's oat
+  normal to 31 bu/ac when the years that actually produced ran 21-60 — an understated baseline that
+  then flatters every other year's comparison. Blanco oats now correctly reports **no trend at all**:
+  strip the zeros and only three harvested years remain, below `MIN_ANCHOR_YEARS`. Refusing is
+  better than a fabricated baseline. Cost across the store: 891 own trends (was 895), 444 borrowed
+  (was 446).
+
+**"Typical year" renamed "30-year Normal"** (user). Rendered from `candidateYears.length`, not a
+hardcoded 30, so a sparse source cannot be labelled with a sample size it does not have — the same
+rule as the trend chart's N-year average.
+
 Quarterly refresh in `.github/workflows/nass-refresh.yml`, verified end to end by
 `scripts/verify-nass.mts`, which **fails the run** if the default location has no crops, if fewer
 than 150 counties are present, or if a boundary check disagrees. The FCC cross-check is *skipped*
