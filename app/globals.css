@@ -819,6 +819,206 @@ button:disabled {
   border-radius: 3px;
 }
 
+/* ---------- panel rail and stage ---------- */
+
+/*
+  Four covers, one open at a time.
+
+  Deliberately NOT four identical white cards in a grid: they answer completely
+  different kinds of question, and uniform rectangles say the opposite. Each
+  cover carries art specific to its own question, and the open one expands
+  below the row rather than replacing it, so the others stay visible as the
+  rest of the story.
+*/
+.panel-rail {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin: 26px 0 0;
+}
+
+.panel-cover {
+  /* `all: unset` first, so nothing inherits the app's button styling. */
+  all: unset;
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+
+.panel-cover:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
+}
+
+.panel-cover:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: 2px;
+}
+
+.panel-cover[aria-expanded="true"] {
+  border-color: var(--soil);
+  box-shadow: 0 0 0 1px var(--soil), var(--shadow);
+}
+
+.pc-art {
+  display: block;
+  height: 92px;
+  background: var(--band-outer);
+  position: relative;
+  overflow: hidden;
+}
+
+.pc-art svg { width: 100%; height: 100%; display: block; }
+
+/* Season: the real lush/burnt pair, split down the middle. */
+.art-split { display: grid; grid-template-columns: 1fr 1fr; height: 100%; }
+.art-split i { display: block; background-size: cover; background-position: center; }
+.art-good { background-image: url("/img/crop-good.jpg"); }
+.art-dry { background-image: url("/img/crop-dry.jpg"); }
+
+/* Analog: this season traced against the ones it resembles. */
+.pc-analog .pc-art { background: var(--surface-raised); }
+.a-ghost { fill: none; stroke: var(--baseline); stroke-width: 1.6; }
+.a-dry { fill: none; stroke: var(--drought); stroke-width: 2.2; }
+.a-now { fill: none; stroke: var(--series-1); stroke-width: 2.6; }
+.a-dot { fill: var(--series-1); }
+
+/* Forecast: the confidence ladder, at cover size. */
+.art-conf {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  height: 100%;
+  padding: 0 18px;
+  background: var(--surface-raised);
+}
+.art-conf i { display: block; height: 7px; border-radius: 4px; }
+
+/* Trend: thirty years of bars. */
+.art-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 100%;
+  padding: 14px 16px;
+  background: var(--surface-raised);
+}
+.art-bars i { flex: 1; background: var(--div-cool); border-radius: 1px 1px 0 0; }
+.art-bars i.dry { background: var(--div-warm); }
+
+.pc-text { display: block; padding: 12px 14px 6px; }
+
+.pc-eyebrow {
+  display: block;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--soil);
+  margin-bottom: 5px;
+}
+
+.pc-title {
+  display: block;
+  font-size: 0.94rem;
+  font-weight: 650;
+  line-height: 1.25;
+  color: var(--text-primary);
+  text-wrap: balance;
+}
+
+.pc-blurb {
+  display: block;
+  margin-top: 5px;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.pc-state {
+  display: block;
+  padding: 8px 14px 12px;
+  margin-top: auto;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.panel-cover[aria-expanded="true"] .pc-state { color: var(--soil); }
+
+/*
+  The stage. Its ground changes with the open panel so the four views do not
+  read as one repeated shape.
+*/
+.panel-stage { margin-top: 16px; }
+.panel-stage > .card { margin-top: 0; }
+
+/* Analogs get a warm ground — the comparison is the warmest thing here. */
+.stage-analog > .card {
+  background: color-mix(in srgb, var(--soil) 5%, var(--surface));
+  border-color: color-mix(in srgb, var(--soil) 22%, var(--border));
+}
+
+/* Forecast sits on plain paper; the confidence bars are the colour. */
+
+/*
+  The thirty-year view inverts. It is the only band that goes dark, which is
+  what makes it read as a different register — a long look back rather than a
+  reading of now.
+*/
+.stage-trend > .card {
+  background: #17140f;
+  border-color: #2b251d;
+  color: #f7f3ec;
+}
+.stage-trend > .card h2,
+.stage-trend > .card .hv { color: #f7f3ec; }
+.stage-trend > .card .card-sub,
+.stage-trend > .card .small,
+.stage-trend > .card .muted,
+.stage-trend > .card .hk,
+.stage-trend > .card label { color: #b9b0a1; }
+.stage-trend > .card .badge {
+  background: rgba(255, 255, 255, 0.08);
+  color: #d9d2c6;
+}
+.stage-trend > .card select,
+.stage-trend > .card button {
+  background: rgba(255, 255, 255, 0.06);
+  color: #f7f3ec;
+  border-color: rgba(255, 255, 255, 0.16);
+}
+.stage-trend > .card button[aria-pressed="true"] {
+  background: var(--series-1);
+  border-color: var(--series-1);
+  color: #fff;
+}
+.stage-trend > .card table th { background: rgba(255, 255, 255, 0.05); color: #f7f3ec; }
+.stage-trend > .card table td { border-color: rgba(255, 255, 255, 0.1); }
+
+@media (max-width: 1100px) {
+  .panel-rail { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 620px) {
+  .panel-rail { grid-template-columns: 1fr; gap: 8px; }
+  .pc-art { height: 64px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-cover { transition: none; }
+  .panel-cover:hover { transform: none; }
+}
+
 /* ---------- notes / badges ---------- */
 
 .note {

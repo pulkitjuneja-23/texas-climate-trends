@@ -28,6 +28,7 @@ import ClimateChart, { type ViewMode } from "@/components/ClimateChart";
 import AnnualTrendChart from "@/components/AnnualTrendChart";
 import AnalogPanel from "@/components/AnalogPanel";
 import ForecastStrip, { type ForecastPayload } from "@/components/ForecastStrip";
+import PanelRail, { PANELS, type PanelId } from "@/components/PanelRail";
 
 const START_YEAR = HISTORY_START_YEAR;
 
@@ -87,9 +88,10 @@ function readUrlDefaults(): {
   source: string | null;
   variable: Field | null;
   trend: Field | null;
+  panel: PanelId | null;
 } {
   if (typeof window === "undefined")
-    return { place: null, source: null, variable: null, trend: null };
+    return { place: null, source: null, variable: null, trend: null, panel: null };
   const q = new URLSearchParams(window.location.search);
   const latRaw = q.get("lat");
   const lonRaw = q.get("lon");
@@ -103,11 +105,15 @@ function readUrlDefaults(): {
     raw && (allowed as string[]).includes(raw) ? (raw as Field) : null;
   const variable = pick(q.get("variable"));
   const trend = pick(q.get("trend"));
+  // Which view was open, so a shared link lands on what the sender was looking
+  // at rather than the default.
+  const rawPanel = q.get("panel");
+  const panel = PANELS.some((p) => p.id === rawPanel) ? (rawPanel as PanelId) : null;
   const place =
     latRaw && lonRaw && Number.isFinite(lat) && Number.isFinite(lon)
       ? { lat, lon, label: q.get("place") ?? `${lat.toFixed(3)}°, ${lon.toFixed(3)}°` }
       : null;
-  return { place, source, variable, trend };
+  return { place, source, variable, trend, panel };
 }
 
 export default function Page() {
@@ -125,6 +131,11 @@ export default function Page() {
   /** Lifted out of AnnualTrendChart so reference ET can be lazily loaded for it. */
   const [trendField, setTrendField] = useState<Field>("precip");
   const [compareYears, setCompareYears] = useState<number[]>([]);
+  /**
+   * Which deep view is open. Season tracker first: it answers the question the
+   * tool exists for, and it is the one a returning grower opens most.
+   */
+  const [panel, setPanel] = useState<PanelId>("season");
 
   const currentYear = new Date().getFullYear();
   // "Since" dates for the season-to-date tiles. Default 1 Jan, but a grower
@@ -180,10 +191,11 @@ export default function Page() {
 
   // Apply ?lat/?lon/?source once, after hydration.
   useEffect(() => {
-    const { place: p, source: s, variable: v, trend: t } = readUrlDefaults();
+    const { place: p, source: s, variable: v, trend: t, panel: pn } = readUrlDefaults();
     if (p) setPlace(p);
     if (s) setSourceId(s);
     if (t) setTrendField(t);
+    if (pn) setPanel(pn);
     if (v) {
       setField(v);
       // Temperatures read as day-by-day; totals read as season-to-date.
@@ -191,6 +203,19 @@ export default function Page() {
     }
     setUrlReady(true);
   }, []);
+
+  /**
+   * Keep ?panel in the address bar so a shared link opens on the view the
+   * sender was looking at. `replaceState`, not push: flipping between views is
+   * not navigation, and stacking history entries would make Back feel broken.
+   */
+  useEffect(() => {
+    if (!urlReady) return;
+    const url = new URL(window.location.href);
+    if (panel === "season") url.searchParams.delete("panel");
+    else url.searchParams.set("panel", panel);
+    window.history.replaceState(null, "", url);
+  }, [panel, urlReady]);
 
   /**
    * Guards against showing the wrong source's numbers.
@@ -993,6 +1018,20 @@ export default function Page() {
           </div>
         ) : records.length > 0 ? (
           <>
+            <PanelRail active={panel} onChange={setPanel} />
+
+            {/*
+              The stage. Its treatment changes with the open panel — a light
+              slab for the season chart, a warm split for the analogs, an
+              inverted dark band for the thirty-year trend. Four identical white
+              rectangles would say these answer the same kind of question, and
+              they do not.
+
+              Only the open panel is mounted, so three charts are not being
+              computed for a reader looking at the fourth.
+            */}
+            <div id="panel-stage" className={`panel-stage stage-${panel}`}>
+            {panel === "season" && (
             <ClimateChart
               records={records}
               field={field}
@@ -1021,7 +1060,9 @@ export default function Page() {
                 missingMonths: missingEtMonths,
               }}
             />
+            )}
 
+            {panel === "analog" && (
             <AnalogPanel
               records={records}
               units={units}
@@ -1033,12 +1074,22 @@ export default function Page() {
               yieldsLoading={yieldsLoading}
               onCompareYears={(ys) => {
                 setCompareYears(ys.slice(0, 4));
-                document.querySelector(".card")?.scrollIntoView({ behavior: "smooth" });
+                // The chart lives in a different panel now, so plotting the
+                // matches has to open it — otherwise the button appears to do
+                // nothing at all.
+                setPanel("season");
+                requestAnimationFrame(() =>
+                  document.getElementById("panel-stage")?.scrollIntoView({ behavior: "smooth" })
+                );
               }}
             />
+            )}
 
-            <ForecastStrip forecast={forecast} loading={fcLoading} units={units} />
+            {panel === "forecast" && (
+              <ForecastStrip forecast={forecast} loading={fcLoading} units={units} />
+            )}
 
+            {panel === "trend" && (
             <AnnualTrendChart
               records={records}
               units={units}
@@ -1050,6 +1101,8 @@ export default function Page() {
               gddCropShort={GDD_PRESETS[gddPreset].short}
               exportContext={exportContext}
             />
+            )}
+            </div>
           </>
         ) : null}
 

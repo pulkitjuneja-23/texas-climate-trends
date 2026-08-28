@@ -17,19 +17,30 @@ government work has neither problem.
 | File | Subject | Source | Licence |
 |---|---|---|---|
 | `hero-cotton.jpg` | Cotton harvester cutting rows, **Batesville, Texas** | U.S. Department of Agriculture, via Wikimedia Commons | Public domain |
-| `crop-good.jpg` | Irrigated crop under centre pivot, Schirmer Farms, Texas (NRCS EQIP) | USDA NRCS, via Wikimedia Commons | Public domain |
+| `crop-good.jpg` | Dense standing cotton — a **different crop of the same Batesville frame** | U.S. Department of Agriculture, via Wikimedia Commons | Public domain |
 | `crop-dry.jpg` | Drought-damaged corn | Tim McCabe, USDA NRCS Photo Gallery, via Wikimedia Commons | Public domain |
 
 ## Why these three
 
-The hero and the irrigated shot were **taken in Texas**, which matters for a
-Texas tool — a generic stock field would have been easier to find and would have
-said nothing true about the place.
+The hero and the standing-crop thumbnail were **taken in Texas**, which matters
+for a Texas tool — a generic stock field would have been easier to find and
+would have said nothing true about the place.
 
-The drought photograph is from Arkansas, not Texas. It was chosen because no
-comparably good public-domain Texas drought image was found, and the subject —
-a burnt-off corn crop — reads correctly regardless of the state line. If it is
-ever replaced with a Texas equivalent, that is an improvement, not a fix.
+`crop-good.jpg` is a second crop from the hero's own source frame rather than a
+separate photograph. Several candidates were tried and rejected on inspection
+rather than on their captions: one "irrigated field" turned out to be a close-up
+of a person working on a pipe, one "cotton field" was a drowned crop standing in
+storm water, and one lush-looking contour farm was mostly harvested stubble. The
+right-hand side of the Batesville aerial is a full stand of cotton in rows,
+which is what the thumbnail actually needs to say.
+
+The drought photograph is from Arkansas, not Texas. No comparably good
+public-domain Texas drought image was found, and a burnt-off corn crop reads
+correctly regardless of the state line. Replacing it with a Texas equivalent
+would be an improvement, not a fix.
+
+**Check images by looking at them.** Every wrong candidate above had a caption
+that sounded right.
 
 ## If you replace one
 
