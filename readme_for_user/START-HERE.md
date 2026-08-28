@@ -141,6 +141,21 @@ One year, January to December, left to right.
 If the blue line is below the grey band, you're drier than almost any year in the record.
 You can add up to 4 past years on top using the year buttons.
 
+**Download.** Both charts have a **CSV** and a **Figure** button at the end of their controls.
+
+- **CSV** gives you the numbers behind the chart exactly as it is set right now — same variable,
+  same units, same years, same view. Opens in Excel. The first few lines start with `#` and record
+  where the data came from; Excel shows them as ordinary rows and R or Python skip them
+  automatically.
+- **Figure** saves a high-resolution image for a report or a slide, about three times screen
+  resolution so it stays sharp when printed.
+
+Both carry the **source and the exact grid cell** they came from, printed on the image and at the
+top of the spreadsheet. That is deliberate. The sources disagree by up to 30% on rainfall, so a
+number that leaves this page without saying which dataset produced it is a number nobody can check
+later — including you, in six months. The trend figure also carries the "read the bars, not the
+line" warning when the trend is weak, so the caveat travels with the picture.
+
 **4b. Water — three new options in the Variable dropdown**
 
 - **Water demand (reference ET)** — works now, no setup. How much water a standard crop would have

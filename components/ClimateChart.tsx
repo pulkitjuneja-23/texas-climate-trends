@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   ComposedChart,
   Area,
@@ -27,6 +27,9 @@ import {
 } from "@/lib/agro/climatology";
 import { type GddConfig } from "@/lib/agro/gdd";
 import { convert, unitLabel, decimals, type Quantity, type UnitSystem } from "@/lib/agro/units";
+import ChartExport from "./ChartExport";
+import { buildCsv, slug } from "@/lib/export/csv";
+import { csvHeader, figureFooter, today, type ExportContext } from "@/lib/export/context";
 
 /**
  * The main view: one calendar year on the x-axis, the 30-year normal drawn as a
@@ -142,6 +145,9 @@ interface Props {
   gddConfig: GddConfig;
   smoothing: number;
   lastObserved: string | null;
+  /** Provenance for the CSV and figure exports — a chart that leaves the app
+   *  without naming its source undercuts the whole argument for the picker. */
+  exportContext?: ExportContext;
   /** Status of the separately-loaded water data, for the ET/balance variables. */
   waterStatus?: {
     loading: boolean;
@@ -170,8 +176,10 @@ export default function ClimateChart(props: Props) {
   const {
     records, field, onFieldChange, mode, onModeChange,
     compareYears, onCompareChange, currentYear, availableYears,
-    units, gddConfig, smoothing, lastObserved, waterStatus,
+    units, gddConfig, smoothing, lastObserved, waterStatus, exportContext,
   } = props;
+
+  const chartRef = useRef<HTMLDivElement>(null);
 
   const isWaterField = WATER_FIELDS.includes(field);
   /** True when the underlying data is published monthly, not daily. */
@@ -291,11 +299,110 @@ export default function ClimateChart(props: Props) {
   const unit = unitLabel(quantity, units);
   const dp = decimals(quantity, units);
 
+  /**
+   * Rounded to the same precision the chart shows.
+   *
+   * Deliberately not full float precision: the export is defined as "what is on
+   * screen", and 19.049999999999997 in a spreadsheet implies a precision these
+   * sources do not have. Empty for a gap, never 0 — a missing day and a dry day
+   * are different facts.
+   */
+  const fmt = (v: number | null | undefined) =>
+    typeof v === "number" && Number.isFinite(v) ? v.toFixed(dp) : "";
+
   const lastObservedKey = lastObserved ? lastObserved.slice(5, 10) : null;
 
   function colorFor(year: number, idx: number): string {
     if (year === currentYear) return `var(${CURRENT_VAR})`;
     return `var(${SERIES_VARS[(idx - 1) % SERIES_VARS.length]})`;
+  }
+
+  /**
+   * The chart's data exactly as drawn: the same variable, units, view mode and
+   * chosen years. Built at click time, never cached, so it cannot go stale.
+   *
+   * The normal and both percentile bands are included because they are what
+   * makes a single year interpretable — a column of rainfall totals with no
+   * sense of what is normal is the thing this whole app exists to replace.
+   */
+  const viewLabel =
+    effectiveMode === "accumulated"
+      ? "season-to-date accumulation"
+      : isMonthlySource
+      ? "monthly totals"
+      : "day by day";
+
+  function csvForChart() {
+    const csv = buildCsv(
+      rows,
+      [
+        { header: "month_day", value: (r) => r.key },
+        { header: "date_label", value: (r) => r.label },
+        { header: `normal_mean_${unit}`, value: (r) => fmt(r.normal) },
+        { header: "p10", value: (r) => fmt(r.band90?.[0]) },
+        { header: "p25", value: (r) => fmt(r.band50?.[0]) },
+        { header: "p75", value: (r) => fmt(r.band50?.[1]) },
+        { header: "p90", value: (r) => fmt(r.band90?.[1]) },
+        ...seriesYears.map((y) => ({
+          header: String(y),
+          value: (r: Row) => fmt(r[`y${y}`] as number | null | undefined),
+        })),
+      ],
+      csvHeader(exportContext, [
+        `Chart: Season tracker — ${varDef.label}`,
+        `View: ${viewLabel}`,
+        `Units: ${unit}`,
+        `Normal band: ${bandYearCount} years` +
+          (bandFirstYear && bandLastYear ? ` (${bandFirstYear}–${bandLastYear})` : "") +
+          (excludedFromBand > 0 ? `, ${excludedFromBand} left out as incomplete` : ""),
+        effectiveMode === "daily" && !isMonthlySource
+          ? `Smoothing: ±${smoothing}-day window on the normals`
+          : "Smoothing: none",
+        "Columns p10–p90 are percentiles of the same normal pool.",
+      ])
+    );
+    return {
+      csv,
+      filename: `${slug(
+        exportContext?.placeName ?? "texas",
+        varDef.label,
+        exportContext?.sourceId,
+        today()
+      )}.csv`,
+    };
+  }
+
+  function figureForChart() {
+    return {
+      meta: {
+        title: `Season tracker — ${varDef.label}`,
+        subtitle:
+          `${exportContext?.placeName ? `${exportContext.placeName} · ` : ""}` +
+          `${viewLabel} · ${unit} · normal from ${bandYearCount} years`,
+        footer: figureFooter(exportContext, `as of ${lastObserved ?? "—"}`),
+        // Redrawn because the on-screen legend is HTML outside the SVG. The
+        // bands are the context that makes a single year readable, so a figure
+        // without them explained is not self-contained.
+        legend: [
+          { label: "Middle 50% of years", varName: "--band-inner", kind: "band" as const },
+          { label: "Middle 80% of years", varName: "--band-outer", kind: "band" as const },
+          { label: "Normal (mean)", varName: "--text-muted", kind: "dash" as const },
+          // Same colour assignment as `colorFor`, so the legend cannot drift
+          // from the lines it describes.
+          ...seriesYears.map((y, i) => ({
+            label: String(y),
+            varName: y === currentYear ? CURRENT_VAR : SERIES_VARS[(i - 1) % SERIES_VARS.length],
+            kind: "line" as const,
+          })),
+        ],
+      },
+      filename: `${slug(
+        exportContext?.placeName ?? "texas",
+        varDef.label,
+        exportContext?.sourceId,
+        today()
+      )}.png`,
+    };
   }
 
   function toggleYear(y: number) {
@@ -415,6 +522,8 @@ export default function ClimateChart(props: Props) {
             {showTable ? "Hide table" : "Show table"}
           </button>
         </div>
+
+        <ChartExport chartRef={chartRef} buildCsv={csvForChart} buildFigure={figureForChart} />
       </div>
 
       <div className="field" style={{ marginBottom: 14 }}>
@@ -479,7 +588,7 @@ export default function ClimateChart(props: Props) {
           </div>
         )}
 
-      <div className="chart-main">
+      <div className="chart-main" ref={chartRef}>
         <ResponsiveContainer>
           <ComposedChart data={rows} margin={{ top: 8, right: 52, bottom: 4, left: 4 }}>
             <CartesianGrid stroke="var(--gridline)" vertical={false} />

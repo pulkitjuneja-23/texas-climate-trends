@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   ComposedChart,
   Bar,
@@ -18,6 +18,9 @@ import { alignByYear, annualAggregate, linearTrend, type Field } from "@/lib/agr
 import type { GddConfig } from "@/lib/agro/gdd";
 import { convert, unitLabel, decimals, type Quantity, type UnitSystem } from "@/lib/agro/units";
 import { BALANCE_LEGEND } from "@/lib/agro/water";
+import ChartExport from "./ChartExport";
+import { buildCsv, slug } from "@/lib/export/csv";
+import { csvHeader, figureFooter, today, type ExportContext } from "@/lib/export/context";
 
 /**
  * Year-by-year totals with a fitted trend — the "is it actually changing here"
@@ -85,6 +88,8 @@ interface Props {
   field: Field;
   onFieldChange: (f: Field) => void;
   waterLoading?: boolean;
+  /** Provenance for the CSV and figure exports. */
+  exportContext?: ExportContext;
 }
 
 export default function AnnualTrendChart({
@@ -95,9 +100,11 @@ export default function AnnualTrendChart({
   field,
   onFieldChange,
   waterLoading = false,
+  exportContext,
 }: Props) {
   const [window, setWindow] = useState(DEFAULT_TREND_WINDOW);
   const [showTable, setShowTable] = useState(false);
+  const chartRef = useRef<HTMLDivElement>(null);
 
   const def = AGGREGATES.find((a) => a.field === field) ?? AGGREGATES[0];
   const isWaterField = WATER_TREND_FIELDS.includes(field) || field === "eto";
@@ -153,6 +160,83 @@ export default function AnnualTrendChart({
   }, [records, field, window, units, gddConfig, def.how, quantity, currentYear]);
 
   const decadeChange = trend ? trend.slope * 10 : null;
+
+  /**
+   * The bars, the fitted line, and each year's distance from the mean — the
+   * three things actually drawn. `fit` is included because a reader
+   * reconstructing the trend from the bars alone would get a different line:
+   * it is fitted over the visible window only, not the whole record.
+   */
+  function csvForChart() {
+    const csv = buildCsv(
+      data,
+      [
+        { header: "year", value: (d) => d.year },
+        { header: `${def.field}_${unit}`, value: (d) => d.value.toFixed(dp) },
+        { header: "anomaly_vs_period_mean", value: (d) => d.anomaly.toFixed(dp) },
+        { header: "trend_fit", value: (d) => (d.fit === null ? "" : d.fit.toFixed(dp)) },
+      ],
+      csvHeader(exportContext, [
+        `Chart: Year-by-year trend — ${def.label}`,
+        `Units: ${unit}`,
+        `Aggregate: annual ${def.how}`,
+        `Window: last ${window} years requested, ${data.length} complete years available`,
+        `Period mean: ${mean.toFixed(dp)} ${unit}`,
+        trend
+          ? `Trend: ${trend.slope >= 0 ? "+" : ""}${(trend.slope * 10).toFixed(dp)} ${unit} per decade, r2 ${trend.r2.toFixed(3)}`
+          : "Trend: not fitted",
+        trend && trend.r2 < 0.15
+          ? "NOTE: r2 below 0.15 — year-to-year variation far exceeds the long-term drift. Read the bars, not the line."
+          : "",
+        droppedYears.length
+          ? `Years excluded for incomplete coverage: ${droppedYears.join(", ")}`
+          : "",
+        `${currentYear} excluded — season still in progress.`,
+      ].filter(Boolean))
+    );
+    return {
+      csv,
+      filename: `${slug(
+        exportContext?.placeName ?? "texas",
+        `annual ${def.label}`,
+        exportContext?.sourceId,
+        today()
+      )}.csv`,
+    };
+  }
+
+  function figureForChart() {
+    return {
+      meta: {
+        title: `Year-by-year trend — ${def.label}`,
+        subtitle:
+          `${exportContext?.placeName ? `${exportContext.placeName} · ` : ""}` +
+          `${data.length} complete years · ${unit}` +
+          (decadeChange !== null
+            ? ` · ${decadeChange >= 0 ? "+" : ""}${decadeChange.toFixed(dp)} ${unit}/decade`
+            : ""),
+        footer: figureFooter(
+          exportContext,
+          trend && trend.r2 < 0.15 ? "weak fit — read the bars, not the line" : undefined
+        ),
+        // The bar colours are diverging around the period mean, which is
+        // meaningless without the poles named — and "wetter/drier" is wrong for
+        // most variables, so the words come from the same definition the
+        // on-screen legend uses.
+        legend: [
+          { label: def.low, varName: def.warmIsHigh ? "--div-cool" : "--div-warm", kind: "band" as const },
+          { label: def.high, varName: def.warmIsHigh ? "--div-warm" : "--div-cool", kind: "band" as const },
+          { label: "Trend", varName: "--text-primary", kind: "dash" as const },
+        ],
+      },
+      filename: `${slug(
+        exportContext?.placeName ?? "texas",
+        `annual ${def.label}`,
+        exportContext?.sourceId,
+        today()
+      )}.png`,
+    };
+  }
   const warmPole = "var(--div-warm)";
   const coolPole = "var(--div-cool)";
 
@@ -236,6 +320,8 @@ export default function AnnualTrendChart({
             {showTable ? "Hide table" : "Show table"}
           </button>
         </div>
+
+        <ChartExport chartRef={chartRef} buildCsv={csvForChart} buildFigure={figureForChart} />
       </div>
 
       {isWaterField && waterLoading && (
@@ -251,7 +337,7 @@ export default function AnnualTrendChart({
         </div>
       )}
 
-      <div className="chart-trend">
+      <div className="chart-trend" ref={chartRef}>
         <ResponsiveContainer>
           <ComposedChart data={data} margin={{ top: 8, right: 16, bottom: 4, left: 4 }}>
             <CartesianGrid stroke="var(--gridline)" vertical={false} />

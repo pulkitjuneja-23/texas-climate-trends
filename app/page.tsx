@@ -40,6 +40,13 @@ interface StationRef {
 
 interface HistoryPayload {
   location: { lat: number; lon: number };
+  /**
+   * The grid cell centre actually read, after snapping to the source's own
+   * grid. The route has always sent this; it is declared here because the
+   * exports need it — a file labelled with the clicked point would imply a
+   * precision that a 55 km NASA POWER cell does not have.
+   */
+  readAt?: { lat: number; lon: number };
   source: SourceMeta;
   availableSources: SourceMeta[];
   lastObserved: string | null;
@@ -301,6 +308,25 @@ export default function Page() {
 
     return () => ctrl.abort();
   }, [place.lat, place.lon, urlReady]);
+
+  /**
+   * What a downloaded CSV or figure says about where its numbers came from.
+   *
+   * `readAt` is the grid cell actually read after snapping, not the clicked
+   * point — a gridMET export is a 4 km cell and a NASA POWER one is 55 km, and
+   * a file carrying only the pin would imply a precision that was never there.
+   */
+  const exportContext = useMemo(
+    () => ({
+      placeName: place.label ?? null,
+      lat: place.lat,
+      lon: place.lon,
+      readAt: history?.readAt ?? null,
+      sourceName: history?.source.name ?? null,
+      sourceId: history?.source.id ?? sourceId,
+    }),
+    [place, history, sourceId]
+  );
 
   /** Monthly OpenET spread across days so it lines up with the daily series. */
   const dailyEt = useMemo(() => {
@@ -921,6 +947,7 @@ export default function Page() {
               gddConfig={gddConfig}
               smoothing={7}
               lastObserved={history?.lastObserved ?? null}
+              exportContext={exportContext}
               waterStatus={{
                 loading: waterLoading,
                 available: dailyEt.size > 0,
@@ -957,6 +984,7 @@ export default function Page() {
               field={trendField}
               onFieldChange={setTrendField}
               waterLoading={waterLoading}
+              exportContext={exportContext}
             />
           </>
         ) : null}

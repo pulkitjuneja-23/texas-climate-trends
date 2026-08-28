@@ -891,6 +891,29 @@ tbody tr:last-child td {
   }
 }
 
+/*
+  Download controls sit at the end of a chart's control row.
+
+  Deliberately not given `margin-left: auto` — the "Show table" field already
+  claims that, and two auto margins would push these apart and leave a gap in
+  the middle of the row.
+*/
+.export-field {
+  flex: 0 0 auto;
+}
+
+.export-field .seg button {
+  min-width: 54px;
+}
+
+@media (max-width: 700px) {
+  /* On a phone the control row wraps; let the pair sit together on its own
+     line rather than splitting across two. */
+  .export-field {
+    margin-left: 0;
+  }
+}
+
 /* The long-run baseline: set apart from the matched years above it. */
 .analog-table .avg-row td {
   border-top: 2px solid var(--border-strong);

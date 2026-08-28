@@ -1226,6 +1226,54 @@ Quarterly refresh in `.github/workflows/nass-refresh.yml`, verified end to end b
 than 150 counties are present, or if a boundary check disagrees. The FCC cross-check is *skipped*
 rather than failed when unreachable — someone else's outage must not mark our data bad.
 
+### 2026-08-28 — CSV and figure downloads on both charts
+
+`lib/export/` + `components/ChartExport.tsx`. Both charts get **CSV** and **Figure** buttons.
+
+**Exports are defined as "what is on screen"** — same variable, units, view mode, chosen years,
+trend window. Built at click time from the same `rows`/`data` the chart renders, never a cached
+snapshot. A download that silently gave metric while the screen said inches would be wrong in a
+spreadsheet, far from anything that could correct it.
+
+**Provenance travels with every file** (`lib/export/context.ts`). Source name, the requested point,
+and **the grid cell actually read after snapping** — a gridMET export is a 4 km cell and NASA POWER
+is 55 km, so a file labelled with the clicked coordinates would imply precision that was never
+there. This is the project's whole thesis; an anonymous export would undercut it. CSV carries it as
+`#` comment lines (R's `comment.char`, pandas' `comment=`, and Excel just shows them as rows); the
+figure prints it under the plot. The trend figure also carries the weak-fit warning, so the caveat
+cannot be separated from the picture.
+
+#### THE PNG TRAP — why `lib/export/figure.ts` is long
+
+Serialising a Recharts SVG and rasterising it looks like three lines and produces a **blank or black
+rectangle**. Two silent reasons:
+
+1. **Every colour here is a CSS custom property** (`var(--series-1)`, `var(--gridline)`). Those are
+   resolved by the DOCUMENT's stylesheet. A serialised SVG handed to an `<img>` is a separate
+   document with no stylesheet, so every `var()` resolves to nothing — as does Recharts' own
+   class-based styling.
+2. Fonts and stroke widths are inherited CSS and vanish the same way.
+
+Fix: clone the SVG, walk it node-for-node against the live element, and write the **computed** value
+of every presentational property inline (`INLINED_PROPERTIES`). Anything missing from that list is
+lost on export.
+
+Related: **the on-screen legend is HTML outside the SVG**, so it does not serialise either. It is
+redrawn onto the canvas — without it the exported season chart shows two unexplained grey bands, and
+those bands are the context that makes a single year mean anything. Legend colours are passed as CSS
+var NAMES and resolved against the live container, because **canvas has no idea what `var(--x)`
+means and, unlike SVG, fails silently rather than visibly.**
+
+Other decisions: PNG at 3x rather than SVG (SVG lands badly in Word and PowerPoint); an explicit
+background painted first, since an SVG is transparent and a dark-mode chart on transparency is
+unreadable in a white document; CSV written with a **UTF-8 BOM** or Excel on Windows turns degree
+signs into mojibake; the object URL revoked on the next frame, because Safari cancels the download
+if it is freed in the same tick as the click.
+
+**Verified in a real browser, not assumed** — the CSS-var trap is invisible to `tsc`. Both charts
+exported, pixels inspected (274 distinct colours sampled, i.e. not a blank rectangle), and both
+images read back and eyeballed.
+
 ## Next up
 
 Items 1, 4 and 7 of the original list are done (gridMET as a source, OpenET, shipped to Vercel).
