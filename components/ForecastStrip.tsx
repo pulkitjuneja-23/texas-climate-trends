@@ -14,6 +14,31 @@ import type { OutlookResult } from "@/lib/sources/cpc";
  * tier is the point of the component, not decoration.
  */
 
+/**
+ * How far to trust this tier, drawn rather than only named.
+ *
+ * The three tiers are already labelled "High / Medium / Low confidence", but a
+ * word is easy to skim past and gives no sense of the GAP between them. A bar
+ * shows at a glance that days 8-16 are not a slightly-worse version of days 1-7
+ * — they are a different kind of claim, and the weeks 2-4 outlook is different
+ * again.
+ *
+ * The widths are a deliberate visual ranking, not a computed skill score. No
+ * such score is published per location by these three providers, and inventing
+ * a precise-looking percentage would be exactly the false confidence this
+ * component exists to prevent.
+ */
+function ConfidenceBar({ level }: { level: "high" | "medium" | "low" }) {
+  const width = level === "high" ? "88%" : level === "medium" ? "52%" : "26%";
+  const color =
+    level === "high" ? "var(--good)" : level === "medium" ? "var(--warning)" : "var(--text-muted)";
+  return (
+    <div className="conf-bar" aria-hidden="true">
+      <i style={{ width, background: color }} />
+    </div>
+  );
+}
+
 export interface ForecastPayload {
   tiers: {
     short: { label: string; confidence: string; provider: string; data: NWSForecast | null; error: string | null };
@@ -80,6 +105,7 @@ export default function ForecastStrip({ forecast, loading, units }: Props) {
             High confidence
           </span>
         </div>
+        <ConfidenceBar level="high" />
         {short.error ? (
           <div className="note error">
             <span>!</span>
@@ -120,6 +146,7 @@ export default function ForecastStrip({ forecast, loading, units }: Props) {
             Moderate confidence
           </span>
         </div>
+        <ConfidenceBar level="medium" />
         {extended.error ? (
           <div className="note error">
             <span>!</span>
@@ -159,6 +186,7 @@ export default function ForecastStrip({ forecast, loading, units }: Props) {
           <h3>{outlook.label}</h3>
           <span className="badge">Probabilistic</span>
         </div>
+        <ConfidenceBar level="low" />
         {outlook.error ? (
           <div className="note error">
             <span>!</span>

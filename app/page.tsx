@@ -641,21 +641,18 @@ export default function Page() {
         validated chart palette depends on a neutral surface, so no background
         art goes near a plot.
       */}
+      {/*
+        A real photograph, and a specific one: a cotton harvester cutting rows
+        at Batesville, Texas. Public domain (USDA), so it carries no licence
+        risk when the repo goes public. A generic stock field would have been
+        easier to source and would have said nothing true about the place.
+
+        The gradient under it is not decoration — it is the fallback. If the
+        image fails on a slow rural connection the band still has a sky and a
+        readable headline rather than collapsing to bare text.
+      */}
       <header className="hero" aria-labelledby="hero-title">
-        <div className="hero-sky" aria-hidden="true">
-          <svg viewBox="0 0 1440 120" preserveAspectRatio="none" focusable="false">
-            {/* Two overlapping ridges give depth without detail that would
-                compete with the page. */}
-            <path
-              className="hero-ridge-far"
-              d="M0,96 C160,74 300,104 470,88 C640,72 760,96 920,82 C1080,68 1260,92 1440,78 L1440,120 L0,120 Z"
-            />
-            <path
-              className="hero-ridge-near"
-              d="M0,110 C180,96 340,118 520,106 C700,94 840,114 1010,104 C1180,94 1300,112 1440,102 L1440,120 L0,120 Z"
-            />
-          </svg>
-        </div>
+        <div className="hero-photo" aria-hidden="true" />
         <div className="hero-inner">
           <h1 id="hero-title">Know your field&rsquo;s weather, not the region&rsquo;s</h1>
           <p>
@@ -663,6 +660,7 @@ export default function Page() {
             data source named, never hidden.
           </p>
         </div>
+        <p className="hero-credit">Batesville, Texas · USDA, public domain</p>
       </header>
 
       <div className="shell">

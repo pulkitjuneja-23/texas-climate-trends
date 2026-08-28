@@ -202,50 +202,71 @@ a {
   overflow: hidden;
 }
 
-.hero-sky {
+/*
+  The photograph, plus the scrim that makes text on it legible.
+
+  A dark gradient over the LEFT of the image rather than a flat overlay across
+  all of it: the headline needs a dark ground, the crop rows on the right are
+  the reason the photo is there at all, and flattening the whole frame to make
+  one corner readable wastes the picture.
+*/
+.hero-photo {
   position: absolute;
-  inset: auto 0 -1px 0;
-  height: 120px;
-  line-height: 0;
+  inset: 0;
   z-index: -1;
+  background-image: linear-gradient(
+      100deg,
+      rgba(12, 10, 8, 0.9) 0%,
+      rgba(12, 10, 8, 0.72) 38%,
+      rgba(12, 10, 8, 0.18) 68%,
+      rgba(12, 10, 8, 0.05) 100%
+    ),
+    url("/img/hero-cotton.jpg");
+  background-size: cover, cover;
+  background-position: center, center 62%;
+  background-repeat: no-repeat;
 }
 
-.hero-sky svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-.hero-ridge-far {
-  fill: var(--field-far);
-}
-
-.hero-ridge-near {
-  fill: var(--field-near);
+.hero-credit {
+  position: absolute;
+  right: 12px;
+  bottom: 8px;
+  margin: 0;
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.62);
 }
 
 .hero-inner {
   max-width: min(1680px, 94vw);
   margin: 0 auto;
-  padding: 40px 20px 92px;
+  padding: clamp(56px, 8vw, 104px) 20px clamp(56px, 8vw, 104px);
 }
 
+/*
+  Light text, fixed — NOT theme tokens.
+
+  The scrim behind it is dark in both themes, so `--text-primary` would flip to
+  near-black in light mode and vanish. This is the one place in the stylesheet
+  where a literal colour is correct: the surface it sits on is a photograph,
+  not a themed surface.
+*/
 .hero-inner h1 {
-  margin: 0 0 8px;
-  font-size: clamp(1.5rem, 3.2vw, 2.3rem);
-  line-height: 1.15;
+  margin: 0 0 10px;
+  font-size: clamp(1.6rem, 3.6vw, 2.6rem);
+  line-height: 1.12;
   letter-spacing: -0.02em;
-  /* Dark ink on a pale sky. Deliberately NOT white-on-image: the sky is light
-     at the top in light mode, and white text there fails contrast outright. */
-  color: var(--text-primary);
-  max-width: 22ch;
+  color: #ffffff;
+  text-shadow: 0 1px 18px rgba(0, 0, 0, 0.45);
+  max-width: 20ch;
 }
 
 .hero-inner p {
   margin: 0;
-  max-width: 60ch;
-  font-size: 0.95rem;
-  color: var(--text-secondary);
+  max-width: 52ch;
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.88);
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.4);
 }
 
 @media (max-width: 700px) {
@@ -773,6 +794,29 @@ button:disabled {
     margin-left: 0;
     text-align: left;
   }
+}
+
+/*
+  Confidence, drawn.
+
+  Sits under each forecast tier's heading. The three widths are a visual
+  ranking, not a skill score — none of these providers publishes one per
+  location, and a precise-looking percentage would manufacture exactly the
+  confidence this component exists to puncture.
+*/
+.conf-bar {
+  height: 4px;
+  border-radius: 3px;
+  background: var(--gridline);
+  overflow: hidden;
+  margin: 0 0 10px;
+  max-width: 320px;
+}
+
+.conf-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
 }
 
 /* ---------- notes / badges ---------- */
