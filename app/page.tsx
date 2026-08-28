@@ -654,9 +654,26 @@ export default function Page() {
               place={place}
               onChange={handlePlace}
               cellSize={sourceList.find((s) => s.id === sourceId)?.cellDeg ?? null}
+              gddPresetKey={gddPreset}
+              gddPresets={GDD_PRESETS}
+              onGddPresetChange={(k) => setGddPreset(k as keyof typeof GDD_PRESETS)}
             />
-            <div className="small" style={{ marginTop: 10, color: "var(--text-secondary)" }}>
-              <strong>{place.label}</strong> · {place.lat.toFixed(4)}°, {place.lon.toFixed(4)}°
+            {/*
+              Provenance for this point, under the map: where the pin is on the
+              left, which real instrument is filling the recent days on the
+              right. Both answer "where did this come from", so they belong
+              together rather than in the figures card.
+            */}
+            <div className="map-foot">
+              <span>
+                <strong>{place.label}</strong> · {place.lat.toFixed(4)}°, {place.lon.toFixed(4)}°
+              </span>
+              {history?.recent.station && (
+                <span className="map-foot-right">
+                  Nearest weather station · {history.recent.station.name} ·{" "}
+                  {history.recent.station.distanceKm} km away
+                </span>
+              )}
             </div>
           </div>
 
@@ -770,20 +787,6 @@ export default function Page() {
                         }}
                       />
                     </div>
-                    {/*
-                      Says the planting date is an ASSUMPTION. A statewide
-                      default is wrong for any specific field — south Texas corn
-                      goes in around mid-February, the High Plains not until
-                      April — and a number counted from a date the grower never
-                      chose should say so rather than look authoritative.
-                    */}
-                    {!gddSinceTouched && (
-                      <div className="small muted" style={{ marginTop: 4, lineHeight: 1.4 }}>
-                        {gddSince.endsWith("-01-01")
-                          ? "From 1 Jan — set your planting date for a figure that means something."
-                          : `Assumes ${GDD_PRESETS[gddPreset].short} planting — set your own date.`}
-                      </div>
-                    )}
                   </div>
 
                   <div className="tile">
@@ -888,35 +891,14 @@ export default function Page() {
                 </div>
               )}
 
-              {/* Crop base and station provenance as compact rows rather than
-                  tiles of their own — they are settings/context, not figures. */}
-              {!histLoading && (
-                <div className="foot-rows">
-                  <div className="foot-row">
-                    <span className="fr-k">GDD base</span>
-                    <select
-                      value={gddPreset}
-                      onChange={(e) => setGddPreset(e.target.value as keyof typeof GDD_PRESETS)}
-                      className="fr-select"
-                    >
-                      {Object.entries(GDD_PRESETS).map(([k, v]) => (
-                        <option key={k} value={k}>
-                          {v.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  {history?.recent.station && (
-                    <div className="foot-row">
-                      <span className="fr-k">Latest days from</span>
-                      <span className="fr-v">
-                        {history.recent.station.id} · {history.recent.station.name} ·{" "}
-                        {history.recent.station.distanceKm} km away
-                      </span>
-                    </div>
-                  )}
-                </div>
-              )}
+              {/*
+                The crop selector and the station line used to sit here as
+                settings rows. Both moved to the location card: the crop because
+                it belongs beside the controls that define what you are looking
+                at, the station because it is provenance for the point and
+                belongs under the map with the coordinates. This card is now
+                only figures.
+              */}
             </div>
 
             {!histLoading && lastWeek && (

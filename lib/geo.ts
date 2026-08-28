@@ -10,6 +10,95 @@ export const TEXAS_BOUNDS = {
 
 export const TEXAS_CENTER: LatLon = { lat: 31.3, lon: -99.5 };
 
+/**
+ * Read a coordinate the way people actually paste one.
+ *
+ * Handles decimal degrees, degrees + decimal minutes (what most handheld GPS
+ * units and marine apps emit), and full degrees/minutes/seconds — with or
+ * without degree symbols, hemisphere letters, or a comma. Returns null rather
+ * than guessing.
+ *
+ * Lives here, not in the picker component, because it is pure logic with real
+ * edge cases and it needs to be testable without pulling React and Leaflet in.
+ *
+ * NOT SUPPORTED: UTM, MGRS, and State Plane. Those are projected systems that
+ * need a datum and a projection library to convert; they are rejected rather
+ * than mangled into a plausible-looking latitude.
+ *
+ * WHY IT READS TOKENS INSTEAD OF MATCHING FORMATS. The previous version tried
+ * to match whole formats with one regex per format, and failed SILENTLY with a
+ * confident wrong answer. Two cases, both found by testing rather than reading:
+ *
+ *   "31.0982° N, 97.3428° W"   ->  982, -428
+ *       The DMS pattern allowed 1-3 digits before the degree sign, so it
+ *       matched the "982" at the TAIL of a decimal and read it as whole
+ *       degrees.
+ *
+ *   "31 5.883 N 97 20.568 W"   ->  31, 5.883
+ *       Degrees with decimal minutes was not handled at all, so the two
+ *       numbers were taken as a latitude and a longitude.
+ *
+ * Neither path was bounds-checked, so an impossible latitude of 982 escaped as
+ * if it were a place.
+ */
+export function parseCoords(input: string): { lat: number; lon: number } | null {
+  const s = input.trim();
+  if (!s) return null;
+
+  const tokens = [...s.matchAll(/(-?\d+(?:\.\d+)?)|([NSEWnsew])(?![a-z])/g)].map((m) =>
+    m[1] !== undefined
+      ? ({ kind: "num" as const, v: Number(m[1]) })
+      : ({ kind: "hemi" as const, v: m[2].toUpperCase() })
+  );
+
+  /** deg / deg+decimal-minutes / deg+min+sec, all to signed decimal degrees. */
+  const toDegrees = (nums: number[], hemi?: string): number | null => {
+    if (!nums.length || nums.length > 3) return null;
+    const sign = Math.sign(nums[0]) || 1;
+    const [d, m = 0, sec = 0] = nums.map(Math.abs);
+    // Minutes and seconds are sixtieths; anything at or past 60 is not one.
+    if (nums.length > 1 && m >= 60) return null;
+    if (nums.length > 2 && sec >= 60) return null;
+    const mag = d + m / 60 + sec / 3600;
+    if (hemi === "S" || hemi === "W") return -mag;
+    if (hemi === "N" || hemi === "E") return mag;
+    return sign * mag;
+  };
+
+  const hemiCount = tokens.filter((t) => t.kind === "hemi").length;
+
+  // --- With hemisphere letters: each letter closes the group before it ---
+  if (hemiCount === 2) {
+    const groups: Array<{ nums: number[]; hemi: string }> = [];
+    let nums: number[] = [];
+    for (const t of tokens) {
+      if (t.kind === "num") nums.push(t.v as number);
+      else {
+        groups.push({ nums, hemi: t.v as string });
+        nums = [];
+      }
+    }
+    if (groups.length !== 2) return null;
+
+    const parts = groups.map((g) => ({ v: toDegrees(g.nums, g.hemi), hemi: g.hemi }));
+    const lat = parts.find((p) => p.hemi === "N" || p.hemi === "S")?.v;
+    const lon = parts.find((p) => p.hemi === "E" || p.hemi === "W")?.v;
+    if (lat == null || lon == null) return null;
+    return Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { lat, lon } : null;
+  }
+
+  // --- No hemisphere letters: exactly two plain decimal numbers ---
+  const nums = tokens.filter((t) => t.kind === "num").map((t) => t.v as number);
+  if (nums.length !== 2) return null;
+
+  const lat = nums[0];
+  let lon = nums[1];
+  // Texas longitudes are negative; a bare positive value is almost certainly a
+  // dropped minus sign rather than a location in the Indian Ocean.
+  if (lon > 0 && lon < 180 && lat > 0) lon = -lon;
+  return Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { lat, lon } : null;
+}
+
 export function inTexas(lat: number, lon: number): boolean {
   return (
     lat >= TEXAS_BOUNDS.minLat &&

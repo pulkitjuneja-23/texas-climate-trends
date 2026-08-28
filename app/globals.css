@@ -163,7 +163,13 @@ a {
 /* ---------- layout ---------- */
 
 .shell {
-  max-width: 1240px;
+  /*
+    Was a hard 1240px, which left broad margins on any modern desktop and made
+    the page read as a narrow document rather than a tool. `min()` lets it use
+    the screen while still keeping a comfortable measure on very wide monitors,
+    where a full-bleed 2560px row of tiles would be worse, not better.
+  */
+  max-width: min(1680px, 94vw);
   margin: 0 auto;
   padding: 0 20px 64px;
 }
@@ -181,7 +187,13 @@ a {
 }
 
 .topbar-inner {
-  max-width: 1240px;
+  /*
+    Was a hard 1240px, which left broad margins on any modern desktop and made
+    the page read as a narrow document rather than a tool. `min()` lets it use
+    the screen while still keeping a comfortable measure on very wide monitors,
+    where a full-bleed 2560px row of tiles would be worse, not better.
+  */
+  max-width: min(1680px, 94vw);
   margin: 0 auto;
   padding: 12px 20px;
   display: flex;
@@ -523,9 +535,23 @@ button:disabled {
 
 /* ---------- compact tiles ---------- */
 
+/*
+  All four season figures on ONE row.
+
+  `auto-fit` with a 120px floor let the water-balance tile wrap onto a second
+  row at common widths, which pushed everything below it down and left an
+  awkward hole beside the map. Four explicit columns with a zero floor keeps
+  them together and lets them squeeze instead of wrapping.
+*/
 .tiles.compact {
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
+}
+
+@media (max-width: 1100px) {
+  .tiles.compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .tiles.compact .tile {
@@ -591,18 +617,65 @@ button:disabled {
   max-width: 62%;
 }
 
+/*
+  The "since" date sits ABOVE the figure, not under it.
+
+  It defines what the number means — a rainfall total since planting and one
+  since New Year are different facts — so a reader who meets the figure first
+  has already drawn a conclusion from an assumption they never saw. Ordering it
+  first is the honest arrangement, and it also makes the control discoverable
+  rather than something to find afterwards.
+*/
 .since-row {
   display: flex;
   align-items: center;
   gap: 5px;
-  margin-top: 5px;
+  order: -1;
+  margin: 0 0 6px;
 }
 
 .since-row input[type="date"] {
-  font-size: 0.7rem;
-  padding: 2px 5px;
+  font-size: 0.68rem;
+  padding: 2px 4px;
   min-height: 0;
   width: 100%;
+  color: var(--text-secondary);
+}
+
+/* `order` only applies to flex/grid children, so the tile becomes a column. */
+.tiles.compact .tile {
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+  Under the map: the pin on the left, the instrument on the right.
+  Both are "where did this come from", so they share a line.
+*/
+.map-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 16px;
+  margin-top: 10px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.map-foot-right {
+  margin-left: auto;
+  text-align: right;
+  color: var(--text-muted);
+}
+
+@media (max-width: 700px) {
+  /* Stacked on a phone, both left-aligned — a right-aligned second line reads
+     as a stray fragment once it is no longer opposite anything. */
+  .map-foot-right {
+    margin-left: 0;
+    text-align: left;
+  }
 }
 
 /* ---------- notes / badges ---------- */

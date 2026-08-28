@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import type { Place } from "@/lib/types";
-import { TEXAS_CENTER } from "@/lib/geo";
+import { TEXAS_CENTER, parseCoords } from "@/lib/geo";
 
 /**
  * Leaflet touches `window` at import time, so the map must be client-only.
@@ -20,6 +20,18 @@ interface Props {
   onChange: (p: Place) => void;
   /** Grid cell of the active source, drawn on the map. Null for stations. */
   cellSize?: { lat: number; lon: number } | null;
+  /** Crop the GDD base belongs to — the one non-location setting in this card. */
+  gddPresetKey?: string;
+  gddPresets?: Record<string, { label: string; short: string }>;
+  onGddPresetChange?: (key: string) => void;
+  /**
+   * The real instrument supplying the most recent days.
+   *
+   * Shown under the map opposite the coordinates, because it is provenance for
+   * THIS point — the same class of fact as which cell was read — rather than a
+   * figure belonging in the season card.
+   */
+  station?: { id: string; name: string; distanceKm: number } | null;
 }
 
 interface SearchHit {
@@ -29,59 +41,15 @@ interface SearchHit {
   county?: string;
 }
 
-/**
- * Accepts the coordinate formats people actually paste:
- *   31.549, -97.147
- *   31.549 -97.147
- *   31°32'56"N 97°08'49"W
- *   31.549N, 97.147W
- */
-function parseCoords(input: string): { lat: number; lon: number } | null {
-  const s = input.trim();
-  if (!s) return null;
-
-  // Degrees/minutes/seconds with hemisphere letters.
-  const dms = [
-    ...s.matchAll(
-      /(\d{1,3})\s*[°d]\s*(\d{1,2})?\s*['′m]?\s*([\d.]+)?\s*["″s]?\s*([NSEWnsew])/g
-    ),
-  ];
-  if (dms.length >= 2) {
-    const vals = dms.slice(0, 2).map((m) => {
-      const deg = Number(m[1]);
-      const min = m[2] ? Number(m[2]) : 0;
-      const sec = m[3] ? Number(m[3]) : 0;
-      const hemi = m[4].toUpperCase();
-      const v = deg + min / 60 + sec / 3600;
-      return { v: hemi === "S" || hemi === "W" ? -v : v, axis: hemi };
-    });
-    const latPart = vals.find((v) => v.axis === "N" || v.axis === "S");
-    const lonPart = vals.find((v) => v.axis === "E" || v.axis === "W");
-    if (latPart && lonPart) return { lat: latPart.v, lon: lonPart.v };
-  }
-
-  // Decimal degrees, optionally with trailing hemisphere letters.
-  const dec = [...s.matchAll(/(-?\d+(?:\.\d+)?)\s*°?\s*([NSEWnsew])?/g)]
-    .map((m) => ({ v: Number(m[1]), hemi: m[2]?.toUpperCase() }))
-    .filter((x) => Number.isFinite(x.v));
-
-  if (dec.length >= 2) {
-    let lat = dec[0].v;
-    let lon = dec[1].v;
-    if (dec[0].hemi === "S") lat = -Math.abs(lat);
-    if (dec[0].hemi === "N") lat = Math.abs(lat);
-    if (dec[1].hemi === "W") lon = -Math.abs(lon);
-    if (dec[1].hemi === "E") lon = Math.abs(lon);
-    // Texas longitudes are negative; a bare positive value is almost certainly
-    // a dropped minus sign rather than a location in the Indian Ocean.
-    if (!dec[1].hemi && lon > 0 && lon < 180 && lat > 0) lon = -lon;
-    if (Math.abs(lat) <= 90 && Math.abs(lon) <= 180) return { lat, lon };
-  }
-
-  return null;
-}
-
-export default function LocationPicker({ place, onChange, cellSize = null }: Props) {
+export default function LocationPicker({
+  place,
+  onChange,
+  cellSize = null,
+  gddPresetKey,
+  gddPresets,
+  onGddPresetChange,
+  station = null,
+}: Props) {
   const [mode, setMode] = useState<Mode>("search");
   const [query, setQuery] = useState("");
   const [coordText, setCoordText] = useState("");
@@ -234,6 +202,31 @@ export default function LocationPicker({ place, onChange, cellSize = null }: Pro
             {locating ? "Locating…" : "📍 Use my location"}
           </button>
         </div>
+
+        {/*
+          Crop sits at the END of this row, right-aligned, because it is the one
+          setting here that is not about WHERE — everything left of it locates
+          the field, this one says which crop the heat units belong to. Keeping
+          it in the same row keeps the card to one band of controls; the auto
+          margin pushes it clear of the location group so the two do not read as
+          one set.
+        */}
+        {gddPresets && onGddPresetChange && (
+          <div className="field" style={{ marginLeft: "auto", alignItems: "flex-end" }}>
+            <label htmlFor="loc-gdd-crop">Growing degree days for</label>
+            <select
+              id="loc-gdd-crop"
+              value={gddPresetKey}
+              onChange={(e) => onGddPresetChange(e.target.value)}
+            >
+              {Object.entries(gddPresets).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {mode === "search" ? (
@@ -248,7 +241,7 @@ export default function LocationPicker({ place, onChange, cellSize = null }: Pro
             <input
               type="text"
               aria-label="Town or city, and state"
-              placeholder="Town and state — e.g. Beeville, TX"
+              placeholder="Town and state — e.g. Temple, TX"
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);
@@ -277,8 +270,8 @@ export default function LocationPicker({ place, onChange, cellSize = null }: Pro
                 <div className="small muted" style={{ padding: "10px 12px" }}>
                   No matches. Search works on <strong>towns and cities</strong> — a rural street
                   address usually isn&apos;t on the map. Try the nearest town and state (e.g.
-                  Beeville, TX), then <strong>click the map</strong> to move the pin onto your
-                  field. Coordinates work too, if you have them.
+                  Temple, TX), then <strong>click the map</strong> to move the pin onto your field.
+                  Coordinates work too, if you have them.
                 </div>
               )}
             </div>
@@ -308,7 +301,11 @@ export default function LocationPicker({ place, onChange, cellSize = null }: Pro
             {coordError ? (
               <span style={{ color: "var(--critical)" }}>{coordError}</span>
             ) : (
-              <>Decimal or degrees/minutes/seconds both work, e.g. 31°32&apos;56&quot;N 97°08&apos;49&quot;W</>
+              <>
+                Decimal, degrees/minutes/seconds, or degrees with decimal minutes all work — e.g.
+                31.0982, −97.3428 or 31°5&apos;53&quot;N 97°20&apos;34&quot;W. UTM and State Plane are
+                not supported.
+              </>
             )}
           </div>
         </div>
