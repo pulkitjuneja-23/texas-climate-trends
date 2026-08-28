@@ -62,6 +62,8 @@ interface OMDaily {
   shortwave_radiation_sum?: (number | null)[];
   wind_speed_10m_max?: (number | null)[];
   precipitation_probability_max?: (number | null)[];
+  /** WMO 4677 code, forecast only — the archive endpoints are not asked for it. */
+  weather_code?: (number | null)[];
 }
 
 function num(v: number | null | undefined): number | null {
@@ -137,6 +139,15 @@ export async function fetchRecent(opts: FetchOpts): Promise<DailyRecord[]> {
 
 export interface ExtendedForecastDay extends DailyRecord {
   precipProb: number | null;
+  /**
+   * WMO 4677 weather code for the day, or null.
+   *
+   * Requested purely so days 8-16 can carry the same sky symbols as days 1-7.
+   * NWS supplies a phrase ("Chance Showers And Thunderstorms") for its own
+   * range; Open-Meteo supplies a number, and without it the second tier would
+   * be the only strip on the page showing bare figures with no picture.
+   */
+  weatherCode: number | null;
 }
 
 /** Days 1-16 from the GFS/ECMWF seamless blend. */
@@ -149,7 +160,7 @@ export async function fetchExtendedForecast(
   const params = new URLSearchParams({
     latitude: String(lat),
     longitude: String(lon),
-    daily: [DAILY_VARS, "precipitation_probability_max"].join(","),
+    daily: [DAILY_VARS, "precipitation_probability_max", "weather_code"].join(","),
     forecast_days: String(days),
     timezone: "America/Chicago",
   });
@@ -166,6 +177,7 @@ export async function fetchExtendedForecast(
   return toRecords(daily, meta.id).map((r, i) => ({
     ...r,
     precipProb: num(daily.precipitation_probability_max?.[i]),
+    weatherCode: num(daily.weather_code?.[i]),
   }));
 }
 

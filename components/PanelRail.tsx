@@ -44,7 +44,7 @@ export const PANELS: PanelDef[] = [
   },
   {
     id: "forecast",
-    title: "Three forecasts. Three levels of trust.",
+    title: "Forecast for next month",
     blurb: "Days 1–7, days 8–16, and weeks 2–4, kept deliberately apart.",
     short: "Next month",
   },
@@ -77,20 +77,53 @@ export default function PanelRail({ active, onChange }: Props) {
           >
             {/*
               Each cover's art is specific to its question rather than a stock
-              icon: a real lush/burnt pair, two seasons traced over each other,
-              the three confidence bars, a run of yearly bars. The art IS the
-              summary.
+              icon. The art IS the summary — it should be readable before the
+              headline is.
             */}
             <span className="pc-art" aria-hidden="true">
+              {/*
+                The three things this panel puts side by side: the accumulated
+                curve, the water, and the crop it is grown for. The graph cell
+                is drawn rather than photographed because it has to say
+                specifically THIS chart — a band with one year traced through
+                it — and no photograph can.
+              */}
               {p.id === "season" && (
-                <span className="art-split">
+                <span className="art-trio">
+                  <i className="art-graph">
+                    <svg viewBox="0 0 60 92" preserveAspectRatio="none">
+                      {/* The middle-half band, then this year running through
+                          it — the season tracker in miniature. */}
+                      <path
+                        d="M0 66 C 12 58, 22 50, 32 41 S 50 25, 60 17 L60 33 C50 41, 42 51, 32 57 S12 72, 0 78 Z"
+                        fill="var(--band-inner)"
+                      />
+                      <path
+                        d="M0 72 C 12 64, 20 60, 28 50 S 44 39, 60 21"
+                        fill="none"
+                        stroke="var(--series-1)"
+                        strokeWidth="2.4"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </i>
+                  <i className="art-water" />
                   <i className="art-good" />
-                  <i className="art-dry" />
                 </span>
               )}
-              {/* Rows already picked beside rows still standing — the same
-                  field in two states, which is the question this panel asks. */}
-              {p.id === "analog" && <span className="art-photo art-harvest" />}
+              {/*
+                Four seasons one field can have: too much water, sun, drought,
+                and the harvest they all end in. The panel asks which past year
+                this one resembles, and these are the answers it can give.
+              */}
+              {p.id === "analog" && (
+                <span className="art-quad">
+                  <i className="aq-rain" />
+                  <i className="aq-sun" />
+                  <i className="aq-dry" />
+                  <i className="aq-harvest" />
+                </span>
+              )}
               {p.id === "forecast" && (
                 <span className="art-conf">
                   <i style={{ width: "88%", background: "var(--good)" }} />

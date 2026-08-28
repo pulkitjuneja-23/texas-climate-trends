@@ -111,8 +111,15 @@ export function yieldUnitView(
   return {
     factor,
     label: METRIC_YIELD_UNIT,
-    // Two places for everything except the tons/acre crops, which land in the
-    // tens of t/ha where a second decimal is noise.
-    decimals: crop.unit === "TONS / ACRE" ? 1 : 2,
+    /**
+     * ONE decimal place, matching every other number in the analog table.
+     *
+     * The exception is cotton, and it is a real one rather than a preference:
+     * cotton is reported as LINT, so a whole county's range sits between about
+     * 0.45 and 1.35 t/ha. At one decimal that entire spread collapses onto ten
+     * values and two genuinely different seasons print the same figure. Every
+     * other crop here spans tens of units, where a second decimal is noise.
+     */
+    decimals: crop.id === "cotton" ? 2 : 1,
   };
 }

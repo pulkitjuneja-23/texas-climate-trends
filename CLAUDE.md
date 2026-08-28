@@ -1343,6 +1343,140 @@ day"). The stale `2000–2025` the user saw was the pre-1996 deployment; that st
 (`[IO.File]::ReadAllText` + `WriteAllText` with `UTF8Encoding($false)`). It survived — 0 mojibake
 sequences, no BOM, em-dashes intact — but this violates the standing rule. Use Edit/Write.
 
+### 2026-08-28 — Analog table rebuilt, forecast gets symbols, sources trimmed
+
+All from one user review. **Not deployed** — still in the aesthetics pass.
+
+#### "Were there any similar years in past?" (was "Which year is this one tracking like?")
+
+Six changes, four of which were removing something:
+
+- **UNITS MOVED TO THE HEADING ROW.** Every cell repeated `in` / `°F`, which
+  trebled each column's width for information that never changes down it and
+  pushed the numbers so far apart they were hard to compare by eye — the only
+  thing the table is for. `.th-unit` renders it quieter and lower-case so it
+  reads as a unit, not part of the name. Two headings deliberately carry none:
+  "Dry days" is already a count of days, and "GDD (GDD °F)" is nonsense.
+- **One decimal place at most; none for GDD or day counts.** Two decimals of
+  rainfall implies a hundredth-of-an-inch agreement between sources that
+  measurably differ by six inches a year. Metric yield went 2 dp → 1 dp with
+  **one exception: cotton.** It is reported as LINT, so a county's whole range
+  sits between about 0.45 and 1.35 t/ha and one decimal collapses it onto ten
+  values. Every other crop spans tens of units where a second decimal is noise.
+- **The Match column is gone; the year swatches carry the ranking instead**, as
+  one green ramp running dark (closest) to light. Five unrelated hues said
+  "five different series" — true only while plotting, and they carried no
+  ranking at all, so the numeric column had to spell out what the colours were
+  contradicting. The score survives on the swatch's tooltip. The ramp is fixed
+  hex, not theme tokens: these are small solid blocks read against each other,
+  and a `color-mix` toward `--surface` would run dark-to-light in one theme and
+  dark-to-dark in the other.
+- **The 2026 row was being read as a heading.** Both causes fixed: it had a rule
+  below and none above, so it looked attached to the header block; and its tint
+  competed with the banded header. Now fenced on both sides with the same
+  neutral rule, tint halved.
+- **Plot draws EVERY matched year and opens the chart BELOW the table.** The
+  four-year cap was a palette limit dressed up as a feature — the chart had four
+  compare colours so the button silently dropped the fifth match, which is
+  exactly backwards here: the five matches ARE the spread and the spread is the
+  finding. **`--series-6` (violet) was added** and `MAX_COMPARE` raised to 5.
+  Slots 1–5 remain the validated data-viz instance; slot 6 was contrast-checked
+  by hand (4.6:1 light, 5.4:1 dark) and has NOT been through the validator.
+  Violet is also the slot most confusable with the blue current-year line for a
+  colour-blind reader — the direct end-labels and table view are the relief, and
+  are now load-bearing for a second reason.
+- **The chart opens under the table rather than replacing it, starts closed on
+  every visit, and the same button removes it** ("Remove plot"). Replacing the
+  table would answer the question and delete the evidence in one gesture — the
+  point is to see 2011's line while reading 2011's row. State lives in
+  `AnalogPanel`, so leaving the panel and returning resets it for free. The
+  chart element is built once in `page.tsx` and handed down as `chartSlot`, so
+  the two placements cannot drift apart. An effect keeps the plotted years in
+  step when the look-back window re-ranks them — otherwise the chart would draw
+  the previous set beside a table showing a new one.
+
+#### Forecast
+
+- Panel renamed **"Forecast for next month"**; each tier is now **one row**
+  (`.fc-strip`, `--fc-n` set from the number of days the provider actually
+  returned, because NWS sends six daytime periods rather than seven late in the
+  day). Scrolls sideways rather than wrapping: a tier is a SEQUENCE, and
+  wrapping puts Thursday under Monday where it reads as a second week.
+- **Weather symbols, two per day** (`components/WeatherIcon.tsx`): sky beside
+  the temperature, water beside the chance of rain. Not one combined glyph — a
+  sunny day carrying a 40% afternoon storm is the commonest Texas summer day
+  there is and needs both. Vocabulary is the NWS's own, which is also what
+  Google and Apple print.
+- **Drawn, not fetched.** NWS ships an `icon` URL, but they are fixed-colour
+  PNGs that look wrong on a dark ground, a third-party request per tile, and
+  Open-Meteo ships none at all — so half the panel would have pictures. Added
+  `weather_code` (WMO 4677) to the Open-Meteo forecast request so days 8–16 get
+  the same symbols. Mapping from NWS is by PHRASE and **order matters**:
+  "Chance Showers And Thunderstorms" contains both words and the thunderstorm is
+  the one that changes a spray decision, so thunder is tested first.
+- Two icon bugs found only by looking at the rendered pixels: the thunderstorm
+  bolt was tucked in the 5px below the cloud and was invisible at 22px (now
+  overlaps the cloud, filled not stroked), and the high/low pair collided with
+  the rain figure (unit moved to the end, "99/78 °F").
+- **Mobile tiles are WIDER, not narrower** — the opposite of the instinct, and
+  the first attempt got it wrong. The row scrolls on a phone regardless, so
+  squeezing buys nothing and costs legibility.
+
+#### Sources hidden, not removed
+
+`HIDDEN_FROM_PICKER` in `registry.ts` filters `listSources()` **and only that**,
+so `getSource("daymet")` still works and `?source=daymet` still resolves — an
+existing shared link keeps working and re-listing is a one-line change. Verified
+live: the picker offers gridMET and NASA POWER; `?source=daymet` still returns
+931 rows. Withheld because neither serves a grower well right now — Daymet lags
+~8 months so it cannot show the season anyone is standing in, and airport
+stations drop days routinely (Pecos: 23 of 237 days in 2026), so their headline
+figure usually needs a warning. **Station data itself is untouched**; the nearest
+ASOS still fills the trailing days behind every gridded source, via
+`findNearestStation`, not this registry.
+
+#### One date convention — `lib/format/date.ts`
+
+**August 27, 2026** everywhere a person reads a date. `2026-08-27` is a storage
+format that reached the screen in four places because it was what the API
+returned, and `8/27` is ambiguous outside the US with nothing on the page saying
+which convention is in force. Parsed at UTC noon throughout: `new Date("2026-08-27")`
+is midnight UTC, which in Texas is the evening of the 26th, so a naive local
+format silently prints the day before.
+
+**ISO stays where a machine reads it** — CSV exports, URL parameters, filenames,
+and the `<input type="date">` controls (whose display belongs to the browser and
+the reader's own locale). The one deliberate shortening is forecast tiles:
+"Mon, Sep 1", because "September 1, 2026" does not fit in one of seven tiles and
+the year is never in question two weeks out.
+
+Also: the **"Hottest" tile in Last 7 days had no unit** — a bare `95°` with no
+way to tell °F from °C.
+
+#### Cover photographs
+
+Season cover is now **the curve, the water, the crop** (drawn chart +
+irrigation drops over Batesville cotton + corn tassels). Similar-years is a 2×2
+of **rain, sun, drought, harvest** — four seasons one field can have, which is
+what the table ranks past years between; a single photograph could only show
+one. Five of seven images are now Texas, three from the same farm as the hero.
+
+**Two images that had already SHIPPED were replaced on inspection**: the
+"standing crop" was a top-down aerial that reads as brown corduroy at thumbnail
+size, and the drought photograph was young corn on dry ground that read as a
+healthy young crop beside the burnt Texas corn now in its place. Commons
+keyword search is poor for this — categories and bulk-upload filename prefixes
+found everything the free-text queries missed.
+
+**New trap for the credits file:** Commons renders a PNG source as a PNG
+thumbnail regardless of the extension requested, so a photograph arrived as a
+231 KB PNG named `.jpg`. Check the magic bytes; re-encoded to 33 KB.
+
+Verified: typecheck clean, `npm run build` clean, plot interaction driven
+through CDP (6 lines drawn, swatches switch, table survives, state resets on
+leaving the panel), and no horizontal overflow at 390/360/320 px across all
+four panels.
+
 ## Next up
 
 Items 1, 4 and 7 of the original list are done (gridMET as a source, OpenET, shipped to Vercel).

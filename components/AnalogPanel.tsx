@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { DailyRecord } from "@/lib/types";
 import {
   findAnalogYears,
@@ -12,6 +12,7 @@ import {
 import type { GddConfig } from "@/lib/agro/gdd";
 import { convert, type Quantity, type UnitSystem, unitLabel } from "@/lib/agro/units";
 import { waterBalanceForWindow, balanceWording, type WaterWindow } from "@/lib/agro/water";
+import { formatDate } from "@/lib/format/date";
 // Both of these modules are pure data and maths with no imports of their own,
 // so a client component may use them; the reader that touches process.env
 // stays on the server.
@@ -20,7 +21,7 @@ import { PRACTICE_LABELS, PRACTICE_HELP, type PracticeId } from "@/lib/yield/cro
 import { yieldUnitView } from "@/lib/yield/units";
 
 /**
- * "Which past year is this one tracking like?"
+ * "Were there any similar years in past?"
  *
  * The ranking is only half the value. The other half is `whatHappenedNext` —
  * what the rest of that analog season actually did. A grower does not care that
@@ -45,7 +46,35 @@ const QTY: Record<keyof AnalogFeatures, Quantity> = {
 };
 
 const WINDOWS = [90, 120, 150, 180];
-const SERIES_VARS = ["--series-2", "--series-3", "--series-4", "--series-5"];
+
+/** Chart line colours, used only once the years are actually being plotted. */
+const SERIES_VARS = [
+  "--series-2",
+  "--series-3",
+  "--series-4",
+  "--series-5",
+  "--series-6",
+];
+
+/**
+ * Match strength as ONE ramp, closest darkest.
+ *
+ * Five unrelated hues in the year column said "these are five different
+ * series" — which is true only while they are being plotted, and false the
+ * rest of the time. Worse, they carried no ranking: the best match looked
+ * exactly as important as the fifth, so the numeric Match column had to spell
+ * out something the colours were actively contradicting.
+ *
+ * One green ramp encodes the ranking directly, which is what let the Match
+ * column go. The exact figure survives on the swatch's tooltip for anyone who
+ * wants it.
+ *
+ * Fixed hex rather than theme tokens on purpose: these are small solid blocks
+ * read against each other, not against the page, so they should look the same
+ * in both themes. A ramp built with `color-mix` toward `--surface` would run
+ * dark-to-light in one theme and dark-to-dark in the other.
+ */
+const MATCH_GREENS = ["#1b5e20", "#2e7d32", "#43a047", "#66bb6a", "#a5d6a7"];
 
 interface Props {
   records: DailyRecord[];
@@ -53,6 +82,12 @@ interface Props {
   gddConfig: GddConfig;
   lastObserved: string | null;
   onCompareYears: (years: number[]) => void;
+  /**
+   * The season chart, ready to mount underneath the table. Passed in rather
+   * than imported so this panel does not have to know how the chart is
+   * configured — the page owns that.
+   */
+  chartSlot?: ReactNode;
   /** Daily ET (mm) keyed YYYY-MM-DD, spread from OpenET's monthly values. */
   dailyEt?: Map<string, number>;
   waterLoading?: boolean;
@@ -86,22 +121,58 @@ function windowForYear(
   };
 }
 
+/**
+ * A BARE NUMBER. The unit lives in the column heading, once.
+ *
+ * Repeating "in" or "°F" in all seventy cells of a table this dense trebled the
+ * width of every column for information that never changes down it — and it
+ * made the numbers themselves harder to compare by eye, which is the only thing
+ * the table is for.
+ *
+ * One decimal place at most. Two decimals of rainfall (`12.44 in`) implies a
+ * hundredth-of-an-inch agreement between sources that measurably disagree by
+ * six inches a year; counts and degree days take none at all.
+ */
 function fmtFeature(v: number, k: keyof AnalogFeatures, units: UnitSystem): string {
   const q = QTY[k];
-  if (q === "rh") return `${Math.round(v)} days`;
-  const conv = convert(v, q, units);
-  const dp = q === "precip" ? (units === "imperial" ? 2 : 0) : q === "gdd" ? 0 : 1;
-  return `${conv.toFixed(dp)} ${unitLabel(q, units)}`;
+  if (q === "rh") return String(Math.round(v));
+  if (q === "gdd") return Math.round(convert(v, q, units)).toLocaleString();
+  return convert(v, q, units).toFixed(1);
 }
 
 function fmtDelta(v: number, k: keyof AnalogFeatures, units: UnitSystem): string {
   const q = QTY[k];
-  if (q === "rh") return `${v >= 0 ? "+" : ""}${Math.round(v)}`;
+  const sign = v >= 0 ? "+" : "";
+  if (q === "rh") return `${sign}${Math.round(v)}`;
   // A temperature DIFFERENCE converts with the ratio only — applying the +32
   // offset here would turn "2 degC warmer" into "35.6 degF warmer".
+  if (q === "gdd") {
+    return `${sign}${Math.round(convert(v, "gdd", units)).toLocaleString()}`;
+  }
   const adj = convert(v, q === "temp" ? "tempDelta" : q, units);
-  const dp = q === "precip" ? (units === "imperial" ? 2 : 0) : q === "gdd" ? 0 : 1;
-  return `${adj >= 0 ? "+" : ""}${adj.toFixed(dp)}`;
+  return `${adj >= 0 ? "+" : ""}${adj.toFixed(1)}`;
+}
+
+/**
+ * The unit for a column heading, or null where the label already carries it.
+ *
+ * "Dry days" is a count of days and says so; degree days are their own unit and
+ * "GDD (GDD °F)" would be nonsense.
+ */
+function headUnit(k: keyof AnalogFeatures, units: UnitSystem): string | null {
+  const q = QTY[k];
+  if (q === "rh" || q === "gdd") return null;
+  return unitLabel(q, units);
+}
+
+/** Renders a heading as label + a quieter unit, so the unit reads as a unit. */
+function Head({ label, unit }: { label: string; unit?: string | null }) {
+  return (
+    <>
+      {label}
+      {unit ? <span className="th-unit">{unit}</span> : null}
+    </>
+  );
 }
 
 export default function AnalogPanel({
@@ -110,6 +181,7 @@ export default function AnalogPanel({
   gddConfig,
   lastObserved,
   onCompareYears,
+  chartSlot,
   dailyEt,
   waterLoading = false,
   yields = null,
@@ -119,6 +191,17 @@ export default function AnalogPanel({
   const [lookAhead, setLookAhead] = useState(60);
   const [cropId, setCropId] = useState<string | null>(null);
   const [practice, setPractice] = useState<PracticeId>("all");
+
+  /**
+   * Whether the season chart is showing beneath the table.
+   *
+   * Starts closed EVERY time this panel is opened, which is deliberate and is
+   * why the state lives here rather than on the page: the panel's job is the
+   * comparison table, and the chart is an answer to a question the reader has
+   * to ask. Only the open panel is mounted, so leaving a view and coming back
+   * resets this for free.
+   */
+  const [plotted, setPlotted] = useState(false);
 
   /**
    * Which crop to open on: the BEST REPORTED one in this county, not the first.
@@ -203,10 +286,24 @@ export default function AnalogPanel({
     }
   }, [records, windowDays, lookAhead, gddConfig, lastObserved]);
 
+  /**
+   * Keep the plotted lines in step with the table while it is open.
+   *
+   * Changing the look-back window re-ranks the years, so without this the chart
+   * would keep drawing the PREVIOUS set while the table showed a new one — two
+   * different answers to the same question on one screen. Serialised to a
+   * string so an identical set does not re-fire.
+   */
+  const plottedKey = result?.matches.map((m) => m.year).join(",") ?? "";
+  useEffect(() => {
+    if (!plotted || !plottedKey) return;
+    onCompareYears(plottedKey.split(",").map(Number));
+  }, [plotted, plottedKey, onCompareYears]);
+
   if (!result || !result.matches.length) {
     return (
       <div className="card">
-        <h2>Analog years</h2>
+        <h2>Were there any similar years in past?</h2>
         <p className="card-sub">
           Not enough overlapping history at this point to match against yet.
         </p>
@@ -215,6 +312,7 @@ export default function AnalogPanel({
   }
 
   const featureKeys = DISPLAYED_FEATURES;
+  const precipUnit = unitLabel("precip", units);
 
   /**
    * Water use and deficit for every row, past window and look-ahead window.
@@ -285,8 +383,12 @@ export default function AnalogPanel({
   }
 
   /**
-   * Signed value plus the word, so a cell can never be misread. "-1.6" alone
-   * under a heading is ambiguous; "1.6 short" is not.
+   * Magnitude plus the word, so a cell can never be misread. "-1.6" alone under
+   * a heading is ambiguous; "1.6 short" is not.
+   *
+   * The word is NOT a unit and does not move to the heading with the others —
+   * it is the sign, in English, and it is the single thing that stops a signed
+   * water balance from reading backwards. See lib/agro/water.ts.
    */
   function balanceCell(w: WaterWindow | null | undefined): {
     text: string;
@@ -297,10 +399,9 @@ export default function AnalogPanel({
     if (!dailyEt || dailyEt.size === 0) return { text: "n/a" };
     if (!w || w.balance === null) return { text: "n/a" };
     const v = convert(w.balance, "precip", units);
-    const dp = units === "imperial" ? 1 : 0;
     const wording = balanceWording(w.balance);
     return {
-      text: `${Math.abs(v).toFixed(dp)}`,
+      text: `${Math.abs(v).toFixed(1)}`,
       word: wording.short.toLowerCase(),
       color: wording.colorVar,
     };
@@ -421,11 +522,26 @@ export default function AnalogPanel({
   const spreadLow = nextRains.length ? Math.min(...nextRains) : null;
   const spreadHigh = nextRains.length ? Math.max(...nextRains) : null;
 
+  /**
+   * Plot draws EVERY row, not the top four.
+   *
+   * The four-year cap was a palette limit dressed up as a feature: the chart
+   * had four compare colours, so the button silently dropped the fifth match.
+   * That is exactly backwards for this panel — the fifth match is part of the
+   * spread, and the spread is the finding. A sixth series slot was added rather
+   * than continuing to hide a row the table had already shown.
+   */
+  function togglePlot() {
+    // The effect above pushes the years once `plotted` flips, so this only has
+    // to own the open/closed state.
+    setPlotted((v) => !v);
+  }
+
   return (
     <div className="card">
       <div className="card-head">
-        <h2>Which year is this one tracking like?</h2>
-        <span className="badge">as of {result.asOf}</span>
+        <h2>Were there any similar years in past?</h2>
+        <span className="badge">as of {formatDate(result.asOf)}</span>
       </div>
       <div className="controls">
         <div className="field">
@@ -470,8 +586,8 @@ export default function AnalogPanel({
         )}
         <div className="field" style={{ marginLeft: "auto" }}>
           <label>&nbsp;</label>
-          <button onClick={() => onCompareYears(result.matches.slice(0, 4).map((m) => m.year))}>
-            Plot top 4 on the chart
+          <button aria-pressed={plotted} onClick={togglePlot}>
+            {plotted ? "Remove plot" : "Plot on the chart"}
           </button>
         </div>
       </div>
@@ -481,8 +597,14 @@ export default function AnalogPanel({
           <span>{spreadHigh - spreadLow > spreadLow * 2 ? "⚠" : "ℹ"}</span>
           <span>
             In the {lookAhead} days after this point, those five years delivered between{" "}
-            <strong>{fmtFeature(spreadLow, "precipTotal", units)}</strong> and{" "}
-            <strong>{fmtFeature(spreadHigh, "precipTotal", units)}</strong> of rain.
+            <strong>
+              {fmtFeature(spreadLow, "precipTotal", units)} {precipUnit}
+            </strong>{" "}
+            and{" "}
+            <strong>
+              {fmtFeature(spreadHigh, "precipTotal", units)} {precipUnit}
+            </strong>{" "}
+            of rain.
             {spreadHigh - spreadLow > spreadLow * 2
               ? " That is a wide spread — a similar start did not determine what followed. Treat these as a range of possibilities, not a forecast."
               : " The outcomes were reasonably consistent across matches."}
@@ -500,7 +622,7 @@ export default function AnalogPanel({
         <table className="analog-table">
           <thead>
             <tr className="group-row">
-              <th colSpan={2} className="grp-blank" />
+              <th className="grp-blank" />
               <th colSpan={featureKeys.length + 2} className="grp-past">
                 Already happened &mdash; last {result.windowDays} days
               </th>
@@ -515,26 +637,31 @@ export default function AnalogPanel({
             </tr>
             <tr>
               <th>Year</th>
-              <th>Match</th>
               {featureKeys.map((k) => (
                 <th key={k} title={FEATURE_LABELS[k]}>
-                  {FEATURE_SHORT_LABELS[k]}
+                  <Head label={FEATURE_SHORT_LABELS[k]} unit={headUnit(k, units)} />
                 </th>
               ))}
               <th title="Estimated water used by the crop, from OpenET monthly values">
-                Est. ET
+                <Head label="Est. ET" unit={precipUnit} />
               </th>
-              <th title="Rain minus estimated water used. Plus is a surplus; minus means the crop used more than it rained.">
-                Balance
+              <th title="Rain minus estimated water used. A surplus means more rain fell than the crop used; short means it used more than it rained.">
+                <Head label="Balance" unit={precipUnit} />
               </th>
-              <th className="future-start">Rain</th>
-              <th className="future">Avg high</th>
-              <th className="future">Est. ET</th>
+              <th className="future-start">
+                <Head label="Rain" unit={precipUnit} />
+              </th>
+              <th className="future">
+                <Head label="Avg high" unit={unitLabel("temp", units)} />
+              </th>
+              <th className="future">
+                <Head label="Est. ET" unit={precipUnit} />
+              </th>
               <th
                 className="future"
-                title="Rain minus estimated water used. Plus is a surplus; minus means the crop used more than it rained."
+                title="Rain minus estimated water used. A surplus means more rain fell than the crop used; short means it used more than it rained."
               >
-                Balance
+                <Head label="Balance" unit={precipUnit} />
               </th>
               {crop && (
                 <th className="future yield-head">
@@ -566,10 +693,17 @@ export default function AnalogPanel({
           </thead>
           <tbody>
             <tr className="now-row">
-              <td style={{ fontWeight: 700, color: "var(--series-1)" }}>
+              <td style={{ fontWeight: 700 }}>
+                <span
+                  className="swatch"
+                  style={{
+                    background: plotted ? "var(--series-1)" : "var(--text-secondary)",
+                    display: "inline-block",
+                    marginRight: 6,
+                  }}
+                />
                 {result.currentYear} (now)
               </td>
-              <td className="muted">&mdash;</td>
               {featureKeys.map((k) => (
                 <td key={k} style={{ fontWeight: 600 }}>
                   {fmtFeature(result.currentFeatures[k], k, units)}
@@ -596,17 +730,27 @@ export default function AnalogPanel({
             {result.matches.map((m, i) => (
               <tr key={m.year}>
                 <td style={{ fontWeight: 650 }}>
+                  {/*
+                    Green ramp normally, chart colours while plotting. The
+                    swatch answers two different questions in those two states —
+                    "how close is this one" versus "which line is this one" —
+                    and the same five hues cannot do both.
+                  */}
                   <span
                     className="swatch"
+                    title={`Match ${m.similarity} of 100 — ${
+                      i === 0 ? "the closest" : `rank ${i + 1}`
+                    } of ${result.candidateYears.length} years compared`}
                     style={{
-                      background: `var(${SERIES_VARS[i % SERIES_VARS.length]})`,
+                      background: plotted
+                        ? `var(${SERIES_VARS[i % SERIES_VARS.length]})`
+                        : MATCH_GREENS[Math.min(i, MATCH_GREENS.length - 1)],
                       display: "inline-block",
                       marginRight: 6,
                     }}
                   />
                   {m.year}
                 </td>
-                <td style={{ fontWeight: 600 }}>{m.similarity}</td>
                 {featureKeys.map((k) => (
                   <td key={k}>
                     {fmtFeature(m.features[k], k, units)}
@@ -670,7 +814,6 @@ export default function AnalogPanel({
                   follows.
                 */}
                 <td style={{ fontWeight: 650 }}>{result.candidateYears.length}-year Normal</td>
-                <td className="muted">avg</td>
                 {featureKeys.map((k) => (
                   <td key={k}>{fmtFeature(result.averages!.features[k], k, units)}</td>
                 ))}
@@ -689,9 +832,7 @@ export default function AnalogPanel({
                 >
                   {waterAverages.pastBalance !== null ? (
                     <>
-                      {Math.abs(convert(waterAverages.pastBalance, "precip", units)).toFixed(
-                        units === "imperial" ? 1 : 0
-                      )}
+                      {Math.abs(convert(waterAverages.pastBalance, "precip", units)).toFixed(1)}
                       <span style={{ fontSize: "0.72rem", marginLeft: 4 }}>
                         {balanceWording(waterAverages.pastBalance).short.toLowerCase()}
                       </span>
@@ -727,9 +868,7 @@ export default function AnalogPanel({
                 >
                   {waterAverages.nextBalance !== null ? (
                     <>
-                      {Math.abs(convert(waterAverages.nextBalance, "precip", units)).toFixed(
-                        units === "imperial" ? 1 : 0
-                      )}
+                      {Math.abs(convert(waterAverages.nextBalance, "precip", units)).toFixed(1)}
                       <span style={{ fontSize: "0.72rem", marginLeft: 4, fontWeight: 500 }}>
                         {balanceWording(waterAverages.nextBalance).short.toLowerCase()}
                       </span>
@@ -777,8 +916,10 @@ export default function AnalogPanel({
       </div>
 
       <div className="small muted" style={{ marginTop: 10, lineHeight: 1.6 }}>
-        <strong>Match</strong> is 0–100 rescaled across the candidate years — it ranks them against
-        each other, it is not a probability. Small grey numbers are that year minus this year.
+        Years are ranked against each other, closest first — the green blocks run dark to light in
+        that order, and hovering one gives its score out of 100. That is a ranking within this
+        location&rsquo;s own record, not a probability. Small grey numbers are that year minus this
+        year.
         {result.skippedYears.length > 0 && (
           <> Years skipped for sparse data: {result.skippedYears.join(", ")}.</>
         )}
@@ -814,6 +955,16 @@ export default function AnalogPanel({
           </>
         )}
       </div>
+
+      {/*
+        The chart opens BELOW the table rather than replacing it.
+
+        Replacing it would answer the question and remove the evidence in one
+        gesture: the reader wants to see 2011's line against this year's WHILE
+        reading 2011's row. This is also why it starts closed on every visit —
+        the table is the panel, and the chart is a thing you ask for.
+      */}
+      {plotted && chartSlot && <div className="analog-plot">{chartSlot}</div>}
     </div>
   );
 }

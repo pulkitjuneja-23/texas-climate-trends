@@ -46,6 +46,13 @@
   --series-3: #1baf7a; /* aqua    */
   --series-4: #eda100; /* yellow  */
   --series-5: #e87ba4; /* magenta */
+  /*
+    Slot 6 is an ADDITION to the validated five, added so the analog panel can
+    plot all five of its matches instead of silently dropping one. Checked by
+    hand rather than by the validator: 4.6:1 against this surface, 5.4:1 against
+    the dark one. Re-run the validator if the palette is ever revisited.
+  */
+  --series-6: #8a5cd1; /* violet  */
 
   /* Climatology envelope — deliberately neutral. It is context, not a series. */
   --band-outer: #e8e7e1;
@@ -97,6 +104,7 @@
     --series-3: #199e70;
     --series-4: #c98500;
     --series-5: #d55181;
+    --series-6: #a77ae0;
 
     --band-outer: #262624;
     --band-inner: #333331;
@@ -131,6 +139,7 @@
   --series-3: #199e70;
   --series-4: #c98500;
   --series-5: #d55181;
+  --series-6: #a77ae0;
 
   --band-outer: #262624;
   --band-inner: #333331;
@@ -868,6 +877,163 @@ button:disabled {
   border-radius: 3px;
 }
 
+/* ---------- forecast strips ---------- */
+
+/*
+  ONE ROW PER TIER.
+
+  These were a wrapping tile grid, which broke seven days across two ragged
+  lines with half the second one empty, and ran the three tiers together into a
+  single field of boxes with no visible seam. A tier is a SEQUENCE — day 1
+  through day 7 — and a sequence has to read along one line or its order stops
+  meaning anything.
+
+  `--fc-n` is set per strip from the number of days the provider actually
+  returned, so the row divides itself evenly instead of guessing: NWS can send
+  six daytime periods rather than seven late in the day, and a hardcoded seven
+  columns would leave a hole.
+*/
+.fc-tier {
+  margin-bottom: 18px;
+}
+
+.fc-tier:last-child {
+  margin-bottom: 0;
+}
+
+.fc-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 7px;
+}
+
+.fc-strip {
+  display: grid;
+  grid-template-columns: repeat(var(--fc-n, 7), minmax(112px, 1fr));
+  gap: 8px;
+  /* Scrolls rather than wraps on a narrow screen. Wrapping would put Thursday
+     under Monday, which reads as a second week. */
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.fc-day {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 8px 7px 9px;
+  min-width: 0;
+}
+
+.fc-when {
+  font-size: 0.68rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Temperature on the left, water on the right — the split every phone weather
+   app uses, because they answer two different questions. */
+.fc-body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+  margin: 5px 0 4px;
+}
+
+.fc-half {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+
+/* The water half never shrinks — the chance of rain is the whole reason the
+   right-hand column exists, and it was the first thing to get squeezed. */
+.fc-wet {
+  flex: none;
+}
+
+.fc-half svg {
+  flex: none;
+}
+
+.fc-temp {
+  font-size: 1.02rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.fc-unit {
+  font-size: 0.6rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-left: 2px;
+}
+
+.fc-low {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.fc-chance {
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--div-cool);
+  white-space: nowrap;
+}
+
+.fc-dry {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+.fc-phrase {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  line-height: 1.35;
+  /* Two lines at most: "Chance Showers And Thunderstorms" is a real NWS phrase
+     and would otherwise make one tile twice the height of its neighbours. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* The CPC tiles carry a verdict rather than a temperature, so they keep the
+   same frame and swap the middle row. */
+.fc-outlook .fc-tercile {
+  font-size: 0.85rem;
+  font-weight: 650;
+  margin: 6px 0 3px;
+}
+
+/*
+  WIDER on a phone, not narrower — which is the opposite of the usual instinct
+  and the reason the first attempt was wrong.
+
+  On a desktop the row has to fit sixteen days across the card, so the tiles
+  divide whatever is there. On a phone the row scrolls no matter what, so
+  squeezing the tiles buys nothing and costs everything: at 104px the high and
+  low temperatures ran into the chance-of-rain figure beside them. Scrolling is
+  already the deal on this screen; make what you scroll past legible.
+*/
+@media (max-width: 700px) {
+  .fc-strip {
+    grid-template-columns: repeat(var(--fc-n, 7), minmax(146px, 1fr));
+  }
+}
+
 /* ---------- panel rail and stage ---------- */
 
 /*
@@ -925,20 +1091,69 @@ button:disabled {
 
 .pc-art svg { width: 100%; height: 100%; display: block; }
 
-/* Season: the real lush/burnt pair, split down the middle. */
-.art-split { display: grid; grid-template-columns: 1fr 1fr; height: 100%; }
-.art-split i { display: block; background-size: cover; background-position: center; }
-.art-good { background-image: url("/img/crop-good.jpg"); }
-.art-dry { background-image: url("/img/crop-dry.jpg"); }
+/*
+  Season: the curve, the water, the crop.
 
-/* Analog: picked rows beside standing ones — one field, two states. */
-.art-photo {
-  display: block;
+  A drawn chart beside two photographs rather than three photographs, because
+  the first cell has to name THIS chart specifically — a band with one year
+  traced through it — and no photograph of a field can do that.
+*/
+.art-trio {
+  display: grid;
+  grid-template-columns: 0.9fr 1fr 1fr;
   height: 100%;
+}
+.art-trio i {
+  display: block;
   background-size: cover;
   background-position: center;
 }
-.art-harvest { background-image: url("/img/crop-harvest.jpg"); }
+.art-graph {
+  background: var(--band-outer);
+  padding: 0;
+}
+.art-graph svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.art-water { background-image: url("/img/crop-water.jpg"); }
+.art-good { background-image: url("/img/crop-standing.jpg"); }
+
+/*
+  Analog: four seasons one field can have.
+
+  Rain, sun, drought, harvest — the four outcomes the panel's table is ranking
+  past years between. A single photograph could only show one of them, which is
+  the opposite of the question being asked.
+
+  1px of gap, drawn by the grid's own background showing through, keeps the
+  four readable as four at this size; without it they merge into one busy
+  rectangle.
+*/
+.art-quad {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 1px;
+  height: 100%;
+  background: var(--border-strong);
+}
+.art-quad i {
+  display: block;
+  background-size: cover;
+  background-position: center;
+}
+.aq-rain { background-image: url("/img/wx-rain.jpg"); }
+/* Biased left, off the harvester and onto the sun sitting on the horizon —
+   the right third of that frame is a machine, and the machine is the next
+   cell's job. */
+.aq-sun {
+  background-image: url("/img/wx-sun.jpg");
+  background-position: 22% center;
+}
+.aq-dry { background-image: url("/img/wx-drought.jpg"); }
+.aq-harvest { background-image: url("/img/wx-harvest.jpg"); }
 
 /* Forecast: the confidence ladder, at cover size. */
 .art-conf {
@@ -1221,8 +1436,18 @@ tbody tr:last-child td {
   background: color-mix(in srgb, var(--series-1) 7%, transparent);
 }
 
+/*
+  THE CURRENT YEAR IS A ROW OF THE TABLE, NOT A SECOND HEADER.
+
+  It was read as a heading, and both of its old properties were to blame. It
+  carried a rule underneath and none above, so it looked attached to the header
+  block above it rather than separated from it; and it was tinted strongly
+  enough to compete with the banded header row for the eye. Now it is fenced on
+  BOTH sides with the same neutral rule, and the tint is halved to a hint that
+  says "this one is different" without saying "this one is a title".
+*/
 .analog-table .now-row {
-  background: color-mix(in srgb, var(--series-1) 10%, transparent);
+  background: color-mix(in srgb, var(--series-1) 5%, transparent);
 }
 
 /*
@@ -1359,6 +1584,7 @@ tbody tr:last-child td {
 }
 
 .analog-table .now-row td {
+  border-top: 2px solid var(--border-strong);
   border-bottom: 2px solid var(--border-strong);
 }
 
@@ -1370,6 +1596,43 @@ tbody tr:last-child td {
 
 .analog-table th {
   font-size: 0.66rem;
+}
+
+/*
+  The unit, said once per column instead of once per cell.
+
+  Repeating "in" and "°F" down seventy cells widened every column for
+  information that never changes, and pushed the numbers apart so they were
+  harder to compare by eye — which is the only thing the table is for. Set
+  lighter and lower-case so it reads as a unit rather than part of the name.
+*/
+.th-unit {
+  margin-left: 4px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-muted);
+}
+
+/*
+  The season chart, opened underneath the table on request.
+
+  Separated by a rule rather than nested in another card: it is the same
+  argument continuing, not a new panel. The card padding is cancelled so the
+  chart runs the full width the table already uses.
+*/
+.analog-plot {
+  margin-top: 18px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.analog-plot > .card {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 /* ---------- tooltip ---------- */

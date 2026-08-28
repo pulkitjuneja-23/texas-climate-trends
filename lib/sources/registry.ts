@@ -31,6 +31,31 @@ import stations from "./stations";
  */
 const LIVE_SOURCES: WeatherSource[] = [gridmet, nasapower, daymet, stations];
 
+/**
+ * Built, wired, and deliberately NOT offered in the picker.
+ *
+ * These are not broken and not removed — `getSource("daymet")` still works, the
+ * adapters are still typechecked, and `?source=daymet` still resolves, so an
+ * existing shared link keeps working and re-listing one is a one-line change.
+ * They are withheld because neither currently serves a grower well:
+ *
+ *   daymet    ~8 month lag, so it cannot show the season anyone is standing in.
+ *             Excellent for a closed historical year; useless for "how is this
+ *             one going".
+ *   stations  the only real-instrument source here, and the one that produced
+ *             the worst reading on the site: airport gauges drop days routinely
+ *             (Pecos reported 23 of 237 days in 2026), and a season total summed
+ *             from a quarter of the days is honest arithmetic on a number nobody
+ *             should act on. The coverage guard now catches it and says so, but
+ *             a source whose headline figure usually needs a warning is not a
+ *             good default offer.
+ *
+ * Station data itself is untouched — the nearest ASOS still fills the trailing
+ * days behind every gridded source. That path goes through
+ * `findNearestStation`, not this registry.
+ */
+const HIDDEN_FROM_PICKER = new Set(["daymet", "stations"]);
+
 const PLANNED: SourceMeta[] = [];
 
 const BY_ID = new Map(LIVE_SOURCES.map((s) => [s.meta.id, s]));
@@ -45,8 +70,15 @@ export function getSource(id: string): WeatherSource {
   return s;
 }
 
+/**
+ * What the picker offers. Hidden sources are excluded here and ONLY here, so
+ * hiding one can never break a request that names it explicitly.
+ */
 export function listSources(): SourceMeta[] {
-  return [...LIVE_SOURCES.map((s) => s.meta), ...PLANNED];
+  return [
+    ...LIVE_SOURCES.filter((s) => !HIDDEN_FROM_PICKER.has(s.meta.id)).map((s) => s.meta),
+    ...PLANNED,
+  ];
 }
 
 // Re-exported for server code; the value lives in `defaults.ts` so the client

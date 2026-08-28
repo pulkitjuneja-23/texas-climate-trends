@@ -30,6 +30,7 @@ import { convert, unitLabel, decimals, type Quantity, type UnitSystem } from "@/
 import ChartExport from "./ChartExport";
 import { buildCsv, slug } from "@/lib/export/csv";
 import { csvHeader, figureFooter, today, type ExportContext } from "@/lib/export/context";
+import { formatDate } from "@/lib/format/date";
 
 /**
  * The main view: one calendar year on the x-axis, the 30-year normal drawn as a
@@ -50,9 +51,30 @@ import { csvHeader, figureFooter, today, type ExportContext } from "@/lib/export
  *    obligates relief — labels plus the table view are that relief.
  */
 
-const SERIES_VARS = ["--series-2", "--series-3", "--series-4", "--series-5"];
+/**
+ * Five comparison colours, not four.
+ *
+ * The fifth (`--series-6`, violet) exists because the analog panel finds five
+ * matches and the plot button silently dropped one of them — a palette limit
+ * showing through as a missing finding. The five matches ARE the spread, and
+ * the spread is what that panel is for.
+ *
+ * NOTE FOR ANY FUTURE PALETTE WORK: slots 1-5 are the validated data-viz
+ * instance; slot 6 was added here and contrast-checked by hand (4.6:1 on the
+ * light surface, 5.4:1 on the dark one) but has not been through the validator.
+ * Violet is also the slot most easily confused with the blue current-year line
+ * for a colour-blind reader — the existing relief covers it, which is precisely
+ * why the direct end-labels and the table view are not optional.
+ */
+const SERIES_VARS = [
+  "--series-2",
+  "--series-3",
+  "--series-4",
+  "--series-5",
+  "--series-6",
+];
 const CURRENT_VAR = "--series-1";
-const MAX_COMPARE = 4;
+const MAX_COMPARE = 5;
 
 export type ViewMode = "daily" | "accumulated";
 
@@ -398,7 +420,7 @@ export default function ClimateChart(props: Props) {
         subtitle:
           `${exportContext?.placeName ? `${exportContext.placeName} · ` : ""}` +
           `${viewLabel} · ${unit} · normal from ${bandYearCount} years`,
-        footer: figureFooter(exportContext, `as of ${lastObserved ?? "—"}`),
+        footer: figureFooter(exportContext, `as of ${formatDate(lastObserved)}`),
         // Redrawn because the on-screen legend is HTML outside the SVG. The
         // bands are the context that makes a single year readable, so a figure
         // without them explained is not self-contained.

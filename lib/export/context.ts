@@ -12,6 +12,8 @@
  * carrying only the clicked coordinates would imply a precision that was never
  * there.
  */
+import { formatDate } from "@/lib/format/date";
+
 export interface ExportContext {
   /** Human label for the spot, e.g. "Blackland cropland" or a searched address. */
   placeName?: string | null;
@@ -26,7 +28,7 @@ export interface ExportContext {
   sourceId?: string | null;
 }
 
-/** ISO date, for filenames and the provenance line. */
+/** ISO date, for filenames and the CSV provenance block. */
 export function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -57,6 +59,12 @@ export function figureFooter(ctx: ExportContext | undefined, extra?: string): st
   else if (ctx) bits.push(`${ctx.lat.toFixed(3)}, ${ctx.lon.toFixed(3)}`);
   if (extra) bits.push(extra);
   bits.push("Texas Climate Trends");
-  bits.push(today());
+  /*
+    The readable form, not ISO. This line is printed under a picture that ends
+    up in a slide or a report, where it is read by a person — and the site's
+    convention is a spelled-out month. The CSV block above keeps ISO, because
+    everything else in that file is ISO and a spreadsheet reads it.
+  */
+  bits.push(formatDate(today()));
   return bits.join("  ·  ");
 }

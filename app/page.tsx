@@ -19,6 +19,7 @@ import {
 } from "@/lib/agro/climatology";
 import { convert, unitLabel, type UnitSystem } from "@/lib/agro/units";
 import { monthlyEtToDaily, attachWaterFields, balanceWording } from "@/lib/agro/water";
+import { formatDate, formatRange } from "@/lib/format/date";
 import type { MonthlyEt } from "@/lib/sources/openet";
 // The TYPE only — `lib/yield/read` touches process.env and must stay server-side.
 import type { CountyYields } from "@/lib/yield/types";
@@ -613,6 +614,48 @@ export default function Page() {
 
   const precipDp = units === "imperial" ? 1 : 0;
 
+  /**
+   * The season chart, built once and handed to whichever panel needs it.
+   *
+   * The season panel IS this chart. The analog panel opens the SAME chart
+   * beneath its table when the reader asks to plot the matched years, rather
+   * than throwing them over to another view — the point of plotting is to read
+   * the lines against the rows, and a jump would take the rows away.
+   *
+   * One element rather than two copies, so the two placements cannot drift
+   * apart, and only ever mounted in one place at a time.
+   */
+  const seasonChart = (
+    <ClimateChart
+      records={records}
+      field={field}
+      onFieldChange={setField}
+      mode={mode}
+      onModeChange={setMode}
+      compareYears={compareYears}
+      onCompareChange={setCompareYears}
+      currentYear={currentYear}
+      availableYears={availableYears}
+      units={units}
+      gddConfig={gddConfig}
+      smoothing={7}
+      lastObserved={history?.lastObserved ?? null}
+      exportContext={exportContext}
+      gddPresetKey={gddPreset}
+      gddPresets={GDD_PRESETS}
+      onGddPresetChange={(k) => setGddPreset(k as keyof typeof GDD_PRESETS)}
+      waterStatus={{
+        loading: waterLoading,
+        available: dailyEt.size > 0,
+        reason:
+          water?.actualEt && !water.actualEt.available
+            ? water.actualEt.reason
+            : "Earth Engine is not connected yet — see readme_for_user/SETUP-EARTHENGINE.md.",
+        missingMonths: missingEtMonths,
+      }}
+    />
+  );
+
   return (
     <>
       {/*
@@ -721,7 +764,7 @@ export default function Page() {
               <div className="card-head">
                 <h2>Season so far</h2>
                 {history?.lastObserved && (
-                  <span className="badge">through {history.lastObserved}</span>
+                  <span className="badge">through {formatDate(history.lastObserved)}</span>
                 )}
                 {history?.source && <span className="badge">{history.source.name}</span>}
               </div>
@@ -944,9 +987,7 @@ export default function Page() {
               <div className="card">
                 <div className="card-head">
                   <h2>Last {lastWeek.days} days</h2>
-                  <span className="badge">
-                    {lastWeek.from} to {lastWeek.to}
-                  </span>
+                  <span className="badge">{formatRange(lastWeek.from, lastWeek.to)}</span>
                 </div>
                 <div className="tiles compact" style={{ marginTop: 10 }}>
                   <div className="tile">
@@ -964,11 +1005,18 @@ export default function Page() {
                   </div>
                   <div className="tile">
                     <div className="k">Hottest</div>
+                    {/* The bare degree sign said nothing: 95° and 35° are the
+                        same temperature and the tile gave no way to tell which
+                        it meant. Every other figure on the page names its
+                        unit. */}
                     <div className="v">
                       {lastWeek.hottest !== null
                         ? Math.round(convert(lastWeek.hottest, "temp", units))
                         : "—"}
-                      {"°"}
+                      <span className="muted" style={{ fontSize: "0.72rem", fontWeight: 500 }}>
+                        {" "}
+                        {unitLabel("temp", units)}
+                      </span>
                     </div>
                     <div className="d">
                       {lastWeek.hotDays} day{lastWeek.hotDays === 1 ? "" : "s"} over{" "}
@@ -1013,36 +1061,7 @@ export default function Page() {
               computed for a reader looking at the fourth.
             */}
             <div id="panel-stage" className={`panel-stage stage-${panel}`}>
-            {panel === "season" && (
-            <ClimateChart
-              records={records}
-              field={field}
-              onFieldChange={setField}
-              mode={mode}
-              onModeChange={setMode}
-              compareYears={compareYears}
-              onCompareChange={setCompareYears}
-              currentYear={currentYear}
-              availableYears={availableYears}
-              units={units}
-              gddConfig={gddConfig}
-              smoothing={7}
-              lastObserved={history?.lastObserved ?? null}
-              exportContext={exportContext}
-              gddPresetKey={gddPreset}
-              gddPresets={GDD_PRESETS}
-              onGddPresetChange={(k) => setGddPreset(k as keyof typeof GDD_PRESETS)}
-              waterStatus={{
-                loading: waterLoading,
-                available: dailyEt.size > 0,
-                reason:
-                  water?.actualEt && !water.actualEt.available
-                    ? water.actualEt.reason
-                    : "Earth Engine is not connected yet — see readme_for_user/SETUP-EARTHENGINE.md.",
-                missingMonths: missingEtMonths,
-              }}
-            />
-            )}
+            {panel === "season" && seasonChart}
 
             {panel === "analog" && (
             <AnalogPanel
@@ -1054,16 +1073,10 @@ export default function Page() {
               waterLoading={waterLoading}
               yields={yields}
               yieldsLoading={yieldsLoading}
-              onCompareYears={(ys) => {
-                setCompareYears(ys.slice(0, 4));
-                // The chart lives in a different panel now, so plotting the
-                // matches has to open it — otherwise the button appears to do
-                // nothing at all.
-                setPanel("season");
-                requestAnimationFrame(() =>
-                  document.getElementById("panel-stage")?.scrollIntoView({ behavior: "smooth" })
-                );
-              }}
+              chartSlot={seasonChart}
+              /* Just sets the years. The panel decides where the chart goes
+                 and when, so this no longer jumps the reader to another view. */
+              onCompareYears={setCompareYears}
             />
             )}
 
