@@ -17,7 +17,7 @@ import { formatDate } from "@/lib/format/date";
 // so a client component may use them; the reader that touches process.env
 // stays on the server.
 import { deviationFromTrend, yieldAt, type CountyYields } from "@/lib/yield/types";
-import { PRACTICE_LABELS, PRACTICE_HELP, type PracticeId } from "@/lib/yield/crops";
+import { PRACTICE_LABELS, type PracticeId } from "@/lib/yield/crops";
 import { yieldUnitView } from "@/lib/yield/units";
 
 /**
@@ -816,9 +816,22 @@ export default function AnalogPanel({
                 {featureKeys.map((k) => (
                   <td key={k}>
                     {fmtFeature(m.features[k], k, units)}
+                    {/*
+                      The note under the table no longer spells the colours out,
+                      so the caveat lives here instead — it still has to be
+                      reachable, because green and red normally read as good and
+                      bad and here they mean only higher and lower. A hotter
+                      August is green.
+                    */}
                     <span
                       className="delta"
                       style={{ color: deltaColor(m.deltas[k]) }}
+                      title={
+                        `${m.year} ran ${
+                          m.deltas[k] >= 0 ? "higher" : "lower"
+                        } than ${result.currentYear} by this much. ` +
+                        `Green is higher and red is lower — direction only, not good or bad.`
+                      }
                     >
                       {fmtDelta(m.deltas[k], k, units)}
                     </span>
@@ -983,25 +996,14 @@ export default function AnalogPanel({
       <div className="small muted" style={{ marginTop: 10, lineHeight: 1.6 }}>
         Years are ranked against each other, closest first — the green blocks run dark to light in
         that order, and hovering one gives its score out of 100. That is a ranking within this
-        location&rsquo;s own record, not a probability.{" "}
-        {/*
-          The colour convention, said plainly. It has to be said, because green
-          and red normally read as good and bad and here they do not: a higher
-          average high is green, and nobody wants a hotter August.
-        */}
-        Bracketed figures are that year minus this one —{" "}
-        <span style={{ color: "var(--up)", fontWeight: 600 }}>green where it ran higher</span>,{" "}
-        <span style={{ color: "var(--down)", fontWeight: 600 }}>red where it ran lower</span>. That
-        is direction only, not good or bad; a hotter year is green in the temperature columns.
+        location&rsquo;s own record, not a probability. Change is shown in parentheses.
         {result.skippedYears.length > 0 && (
           <> Years skipped for sparse data: {result.skippedYears.join(", ")}.</>
         )}
         {crop && (
           <>
             {" "}
-            <strong>{crop.label}</strong> yield is the average across all of{" "}
-            <strong>{yields!.county.name} County</strong> — a much coarser thing than the weather
-            columns beside it, which come from the grid cell containing your pin.{" "}
+            Yields are reported as county averages.
             {/*
               Only stated when the figure is NOT county-wide. Most counties
               publish nothing else, so saying "all production practices" every
@@ -1009,15 +1011,11 @@ export default function AnalogPanel({
             */}
             {activePractice !== "all" && (
               <>
+                {" "}
                 USDA publishes no county-wide figure for this crop here, so these are{" "}
-                <strong>{PRACTICE_LABELS[activePractice].toLowerCase()} acres only</strong> —{" "}
-                {PRACTICE_HELP[activePractice].toLowerCase()}.{" "}
+                <strong>{PRACTICE_LABELS[activePractice].toLowerCase()} acres only</strong>.
               </>
             )}
-            Hover or tap a yield to see how far it sat above or below the long-term trend; that
-            comparison is against the trend rather than a flat average because thirty years of
-            better genetics would otherwise make every old year look like a failure.{" "}
-            {yields!.attribution}.
           </>
         )}
         {/*

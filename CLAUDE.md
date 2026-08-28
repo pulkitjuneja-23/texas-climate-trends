@@ -1617,6 +1617,78 @@ nothing references them now. Their exact Commons filenames are recorded in
 restored precisely rather than re-searched. Image payload is now **466 KB across
 three files**, down from 731 KB across six.
 
+### 2026-08-28 — Rainfall validated against the state's own map
+
+User reported complaints that numbers looked off and supplied the **TexMesoNet
+"Year to Date Precipitation" map** (NOAA/NWS Office of Dissemination gridded
+precipitation via TWDB, 28 Aug 2026). Full write-up in
+`readme_for_user/VALIDATION-RAINFALL.md`.
+
+**Verdict: gridMET is fine. The airport-station source was the problem, and it
+was already hidden from the picker earlier the same day.**
+
+| vs the state map, 32 sites | exact band | within one band | bias | MAE | r |
+|---|---|---|---|---|---|
+| gridMET | 21/32 | **32/32** | −0.51 in | 2.14 | 0.963 |
+| NASA POWER | 17/32 | 31/32 | −1.65 in | 2.55 | 0.958 |
+| stations | 10/32 | 21/32 | **−7.21 in** | 7.42 | 0.341 |
+
+**Reading a banded map has an error floor.** Bins are 5 in wide, so a perfect
+match still scores 5/√12 = 1.5 in RMSE against a midpoint. gridMET's excess over
+that floor is 2.37 in; NASA POWER's is 3.16 in. **Never quote a midpoint-based
+MAE from a binned reference without subtracting this** — it makes a good match
+look mediocre.
+
+**THE MAP IS NOT TRUTH, so gauges arbitrated.** At the 20 sites with ≥95% gauge
+coverage, all three estimates read HIGH by about the same amount — gridMET +2.0,
+NASA POWER +1.5, and **NOAA's own map +2.4**. Expected: gauge wind undercatch is
+5–15%, and a point gauge is not an areal average. Closest-to-gauge tally:
+gridMET 7, POWER 7, map 6. A three-way tie — our default is not measurably worse
+than the source the state publishes.
+
+#### Extracting the map — reusable method
+
+The PDF is a **geospatial PDF**: `/Viewport /Measure /GEO` with `/GPTS` corners
+and a Web Mercator `/WKT`. The raster is one grid split into six image XObjects
+(5 × 3301×635 plus a 3301×125 tail); the page transform chain composes to the
+identity, so raster pixel (col,row) is at page point
+`(0.24(col+0.5), 792−0.24(row+0.5))`. **Latitude is NOT linear down the image —
+Mercator-y is.** Treating it as linear shifts points by up to ~20 km at the ends.
+
+The 17 legend swatches are also images, each inside its own Form XObject, so the
+colour→bin pairing is *read* rather than eyeballed off a screenshot. Self-check:
+the last two must come out white and grey.
+
+**GEOREFERENCING WAS VERIFIED BEFORE ANY NUMBER WAS TRUSTED,** using the map's
+own vector Texas outline: Panhandle meridians land 0.4 and 1.0 km from
+−103.0417 and −100.0000, and the two straight parallels 0.2 and 0.1 km from
+36.5°N and 32.0°N. A rainfall comparison alone could NOT have caught a bad
+mapping — rainfall varies smoothly, so a 50 km offset would still correlate well.
+An attempted check using "where does data stop at the Mexican border" was
+useless: the QPE grid is not clipped to Texas.
+
+Neither poppler nor headless Chrome will render this PDF here, so the raster is
+carved out of the object streams directly (`zlib.inflateSync` on the image
+XObjects, hand-rolled PNG writer to look at it).
+
+#### THE NEW BUG THIS FOUND — coverage counting is not enough
+
+**A gauge can report every day and still be wrong.** Paris, Texas reported 95% of
+days and totalled **2.1 in** where both the map and gridMET say ~30 — a dead
+tipping bucket logging 0.00 rather than logging nothing. `makeStat`'s sparse
+guard counts days PRESENT, so it cannot see this. Half of the 32 stations checked
+failed some quality test.
+
+This is not confined to the hidden station source: **`findNearestStation` also
+fills the trailing days behind every gridded source**, so a dead gauge can inject
+a few days of false zeros into the default. Bounded (a handful of days out of
+238) but real, and not yet guarded.
+
+A first attempt at filtering used mean depth per wet day ≥ 0.3 in, which
+**wrongly dropped Amarillo, Lubbock and El Paso** — 0.23 in per rain day is
+normal in semi-arid west Texas, not a fault. Any gauge-quality rule has to be
+regional or it will discard the driest real data.
+
 ## Next up
 
 Items 1, 4 and 7 of the original list are done (gridMET as a source, OpenET, shipped to Vercel).

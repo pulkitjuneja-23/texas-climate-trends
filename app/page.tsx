@@ -1119,7 +1119,12 @@ export default function Page() {
             days 1–7 from the{" "}
             <a href="https://www.weather.gov/documentation/services-web-api">NOAA/NWS API</a>; days
             8–16 from <a href="https://open-meteo.com/">Open-Meteo</a>; weeks 2–4 outlooks from the{" "}
-            <a href="https://www.cpc.ncep.noaa.gov/">NOAA Climate Prediction Center</a>. Geocoding by{" "}
+            <a href="https://www.cpc.ncep.noaa.gov/">NOAA Climate Prediction Center</a>. County crop
+            yields from{" "}
+            <a href="https://quickstats.nass.usda.gov/">
+              USDA National Agricultural Statistics Service, Quick Stats
+            </a>
+            . Geocoding by{" "}
             <a href="https://nominatim.openstreetmap.org/">Nominatim</a>, map tiles ©{" "}
             <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors.
           </p>
