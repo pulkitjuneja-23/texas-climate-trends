@@ -29,6 +29,43 @@ export interface PanelDef {
   short: string;
 }
 
+/**
+ * Six past seasons on the "similar years" cover, one of them picked out.
+ *
+ * Each array is one card's rainfall shape, 0 at the bottom of the card and 1 at
+ * the top. They are hand-set rather than random so the picture is identical on
+ * the server and the client — `Math.random()` in a render is a hydration
+ * mismatch, and this is decoration, not data.
+ */
+const YEAR_CURVES = [
+  [0.5, 0.34, 0.6, 0.4, 0.7],
+  [0.3, 0.55, 0.44, 0.7, 0.5],
+  [0.68, 0.5, 0.34, 0.56, 0.3],
+  [0.44, 0.3, 0.56, 0.36, 0.66],
+  [0.4, 0.64, 0.3, 0.6, 0.46],
+  [0.6, 0.4, 0.5, 0.3, 0.55],
+];
+
+/** Which card is the match. Third of six — found among them, not at an end. */
+const MATCHED_CARD = 3;
+
+/** Card geometry, in the 300x92 viewBox. Shared by the rects and the curves. */
+const CARD_W = 42;
+const CARD_PITCH = 48;
+const CARD_X0 = 10;
+const HEADER_H = 9;
+
+/** A card's little season curve, as a polyline path. */
+function curvePath(curve: number[], x: number, top: number, height: number): string {
+  const left = x + 6;
+  const step = (CARD_W - 12) / (curve.length - 1);
+  const bottom = top + height - 8;
+  const span = height - HEADER_H - 17;
+  return curve
+    .map((v, i) => `${i === 0 ? "M" : "L"}${left + i * step} ${bottom - v * span}`)
+    .join(" ");
+}
+
 export const PANELS: PanelDef[] = [
   {
     id: "season",
@@ -82,46 +119,100 @@ export default function PanelRail({ active, onChange }: Props) {
             */}
             <span className="pc-art" aria-hidden="true">
               {/*
-                The three things this panel puts side by side: the accumulated
-                curve, the water, and the crop it is grown for. The graph cell
-                is drawn rather than photographed because it has to say
-                specifically THIS chart — a band with one year traced through
-                it — and no photograph can.
+                ONE FIELD, TWO OUTCOMES, AND THE WATER FALLING BETWEEN THEM.
+
+                The same crop standing on the left and burnt on the right, with
+                the water mark on the seam — which is the panel's whole question
+                in one picture: this season is somewhere on that line, and the
+                chart inside says where.
+
+                Composed from two photographs rather than one, because no single
+                frame of a real field shows both states; the seam is the honest
+                way to put them together, and it is also the reading order —
+                good on the left, what happens without water on the right.
               */}
               {p.id === "season" && (
-                <span className="art-trio">
-                  <i className="art-graph">
-                    <svg viewBox="0 0 60 92" preserveAspectRatio="none">
-                      {/* The middle-half band, then this year running through
-                          it — the season tracker in miniature. */}
+                <span className="art-duo">
+                  <i className="ad-lush" />
+                  <i className="ad-dry" />
+                  <span className="ad-badge">
+                    <svg viewBox="0 0 40 40" aria-hidden="true">
+                      <circle cx="20" cy="20" r="17.5" fill="rgba(12,10,8,0.66)" />
                       <path
-                        d="M0 66 C 12 58, 22 50, 32 41 S 50 25, 60 17 L60 33 C50 41, 42 51, 32 57 S12 72, 0 78 Z"
-                        fill="var(--band-inner)"
+                        d="M20 7c4.4 5.6 6.6 8.9 6.6 11.8a6.6 6.6 0 0 1-13.2 0C13.4 15.9 15.6 12.6 20 7Z"
+                        fill="none"
+                        stroke="#ffffff"
+                        strokeWidth="1.9"
+                        strokeLinejoin="round"
                       />
                       <path
-                        d="M0 72 C 12 64, 20 60, 28 50 S 44 39, 60 21"
+                        d="M20 27v6.4M16.4 30l3.6 3.4 3.6-3.4"
                         fill="none"
-                        stroke="var(--series-1)"
-                        strokeWidth="2.4"
+                        stroke="#ffffff"
+                        strokeWidth="1.9"
                         strokeLinecap="round"
+                        strokeLinejoin="round"
                       />
                     </svg>
-                  </i>
-                  <i className="art-water" />
-                  <i className="art-good" />
+                  </span>
                 </span>
               )}
               {/*
-                Four seasons one field can have: too much water, sun, drought,
-                and the harvest they all end in. The panel asks which past year
-                this one resembles, and these are the answers it can give.
+                A SHELF OF PAST SEASONS, ONE PULLED OUT.
+
+                Drawn rather than photographed, and one figure rather than four,
+                because the subject here is not a field at all — it is the
+                comparison. No photograph can say "we looked through thirty
+                years and this one matches", and four photographs of four
+                weathers said something else entirely: that the panel is about
+                what the weather did, when it is about which past year it did it
+                in.
+
+                Each card carries its own season shape, because that is what is
+                actually being matched on — not the totals, the trajectory.
               */}
               {p.id === "analog" && (
-                <span className="art-quad">
-                  <i className="aq-rain" />
-                  <i className="aq-sun" />
-                  <i className="aq-dry" />
-                  <i className="aq-harvest" />
+                <span className="art-years">
+                  <svg viewBox="0 0 300 92" preserveAspectRatio="xMidYMid slice">
+                    {YEAR_CURVES.map((curve, i) => {
+                      const x = CARD_X0 + i * CARD_PITCH;
+                      const match = i === MATCHED_CARD;
+                      // The matched card is taller at both ends, so it reads as
+                      // lifted out of the row rather than merely coloured in.
+                      const top = match ? 6 : 15;
+                      const h = match ? 80 : 62;
+                      return (
+                        <g key={i}>
+                          <rect
+                            x={x}
+                            y={top}
+                            width={CARD_W}
+                            height={h}
+                            rx={3}
+                            fill="var(--surface-raised)"
+                            stroke={match ? "var(--series-1)" : "var(--border-strong)"}
+                            strokeWidth={match ? 1.8 : 1}
+                          />
+                          {/* The calendar-page header band that says "a year". */}
+                          <path
+                            d={
+                              `M${x} ${top + 3}a3 3 0 0 1 3-3h${CARD_W - 6}` +
+                              `a3 3 0 0 1 3 3v${HEADER_H}H${x}z`
+                            }
+                            fill={match ? "var(--series-1)" : "var(--band-inner)"}
+                          />
+                          <path
+                            d={curvePath(curve, x, top, h)}
+                            fill="none"
+                            stroke={match ? "var(--series-1)" : "var(--text-muted)"}
+                            strokeWidth={match ? 2.2 : 1.5}
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </g>
+                      );
+                    })}
+                  </svg>
                 </span>
               )}
               {p.id === "forecast" && (

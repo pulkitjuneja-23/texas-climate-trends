@@ -1147,68 +1147,66 @@ button:disabled {
 .pc-art svg { width: 100%; height: 100%; display: block; }
 
 /*
-  Season: the curve, the water, the crop.
+  SEASON: ONE FIELD, TWO OUTCOMES, WATER FALLING BETWEEN THEM.
 
-  A drawn chart beside two photographs rather than three photographs, because
-  the first cell has to name THIS chart specifically — a band with one year
-  traced through it — and no photograph of a field can do that.
+  Two photographs of the SAME crop — corn standing on the left, corn burnt on
+  the right — split down the middle with the water mark on the seam. Two frames
+  rather than one because no real photograph shows a field in both states at
+  once; the seam is the honest join, and it doubles as the reading order.
+
+  A hairline divider, not a gap: at 92px a gap reads as two pictures, a line
+  reads as one picture with a boundary — which is the point.
 */
-.art-trio {
-  display: grid;
-  grid-template-columns: 0.9fr 1fr 1fr;
-  height: 100%;
-}
-.art-trio i {
-  display: block;
-  background-size: cover;
-  background-position: center;
-}
-.art-graph {
-  background: var(--band-outer);
-  padding: 0;
-}
-.art-graph svg {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-.art-water { background-image: url("/img/crop-water.jpg"); }
-.art-good { background-image: url("/img/crop-standing.jpg"); }
-
-/*
-  Analog: four seasons one field can have.
-
-  Rain, sun, drought, harvest — the four outcomes the panel's table is ranking
-  past years between. A single photograph could only show one of them, which is
-  the opposite of the question being asked.
-
-  1px of gap, drawn by the grid's own background showing through, keeps the
-  four readable as four at this size; without it they merge into one busy
-  rectangle.
-*/
-.art-quad {
+.art-duo {
+  position: relative;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
-  gap: 1px;
   height: 100%;
-  background: var(--border-strong);
 }
-.art-quad i {
+.art-duo i {
   display: block;
   background-size: cover;
   background-position: center;
 }
-.aq-rain { background-image: url("/img/wx-rain.jpg"); }
-/* Biased left, off the harvester and onto the sun sitting on the horizon —
-   the right third of that frame is a machine, and the machine is the next
-   cell's job. */
-.aq-sun {
-  background-image: url("/img/wx-sun.jpg");
-  background-position: 22% center;
+.ad-lush {
+  background-image: url("/img/crop-standing.jpg");
+  /* Biased low, onto the canopy rather than the sky above it. */
+  background-position: center 72%;
 }
-.aq-dry { background-image: url("/img/wx-drought.jpg"); }
-.aq-harvest { background-image: url("/img/wx-harvest.jpg"); }
+.ad-dry {
+  background-image: url("/img/wx-drought.jpg");
+  background-position: center 62%;
+  box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.55);
+}
+
+/* The water mark, straddling the seam. Its own dark disc so it holds against
+   both a bright sky and a dark furrow without depending on either. */
+.ad-badge {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 38px;
+  height: 38px;
+  pointer-events: none;
+}
+
+/*
+  SIMILAR YEARS: a shelf of past seasons with one pulled out.
+
+  Drawn, and ONE figure rather than four photographs. The subject of this panel
+  is not a field, it is the comparison — and four weathers in a grid said the
+  panel was about what the weather did, when it is about which past year it did
+  it in. Nothing photographic can state "we looked through thirty years and this
+  one matches".
+
+  It sits on the --band-outer ground .pc-art already provides, so the cards read
+  as objects on a surface rather than as a picture in a frame.
+*/
+.art-years {
+  display: block;
+  height: 100%;
+}
 
 /* Forecast: the confidence ladder, at cover size. */
 .art-conf {

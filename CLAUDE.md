@@ -1585,6 +1585,38 @@ Worth recording why this cannot be solved by asking the grower whether their
 field is irrigated: the constraint is what USDA published for their county, not
 what they do on their own acres.
 
+### 2026-08-28 (later still) — Two covers rebuilt from user references
+
+User supplied reference images: a split field (cracked earth beside standing
+wheat) and a calendar illustration. **Not deployed.**
+
+**Season tracker — one field, two outcomes, water falling between them.** Corn
+standing on the left, the SAME crop burnt on the right, split down the middle
+with a droplet-and-down-arrow mark on the seam. Two frames rather than one
+because no real photograph shows a field in both states at once; the seam is the
+honest join and doubles as the reading order. Using the same crop on both sides
+is the point — two different crops would have read as two different fields.
+A hairline divider rather than a gap: at 92px a gap reads as two pictures, a
+line reads as one picture with a boundary.
+
+**Similar years — a shelf of past seasons, one pulled out.** Drawn, and ONE
+figure rather than four photographs. The subject of that panel is not a field,
+it is the *comparison*: four weathers in a grid said the panel was about what
+the weather did, when it is about which past year it did it in, and nothing
+photographic can state "we looked through thirty years and this one matches".
+Six calendar-style cards each carrying its own season curve — because the
+trajectory is what the matching actually scores on, not the totals — with one
+lifted and accented.
+
+`YEAR_CURVES` is hand-set, not random: `Math.random()` in a render is a
+hydration mismatch, and this is decoration rather than data.
+
+**Four photographs deleted** (`crop-water`, `wx-rain`, `wx-sun`, `wx-harvest`) —
+nothing references them now. Their exact Commons filenames are recorded in
+`public/img/CREDITS.md` under "Removed, and how to get them back", so any can be
+restored precisely rather than re-searched. Image payload is now **466 KB across
+three files**, down from 731 KB across six.
+
 ## Next up
 
 Items 1, 4 and 7 of the original list are done (gridMET as a source, OpenET, shipped to Vercel).
