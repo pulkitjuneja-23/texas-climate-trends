@@ -158,17 +158,33 @@ export async function readArchivePoint(
   if (start < m.parts.archive.start) return null;
 
   const varKeys = Object.keys(m.vars);
-  const [archive, current] = await Promise.all([
-    readPart(m, "archive", cell, varKeys),
-    readPart(m, "current", cell, varKeys),
-  ]);
-  if (!archive || !current) return null;
 
-  // Stitch the two parts into one continuous series, then trim to the request.
-  const parts: Array<{ part: Part; data: Record<string, Int16Array> }> = [
-    { part: "archive", data: archive },
-    { part: "current", data: current },
-  ];
+  /**
+   * Fetch only the parts the request actually overlaps.
+   *
+   * This matters far more than it looks. Past years are cached permanently, so
+   * the RECURRING request — every three hours, once the in-progress year goes
+   * stale — asks only for the current year. Reading both parts anyway pulled
+   * ~580 KB of thirty-year archive chunks to serve ~20 KB of this year, on
+   * every refresh, forever. Skipping the untouched part cuts the steady-state
+   * cost by around 95%.
+   */
+  const wanted = (["archive", "current"] as Part[]).filter((p) => {
+    const r = m.parts[p];
+    return start <= r.end && end >= r.start;
+  });
+  if (!wanted.length) return null;
+
+  const fetched = await Promise.all(wanted.map((p) => readPart(m, p, cell, varKeys)));
+  // A missing chunk in any needed part means an incomplete series, which would
+  // read as a drought that never happened. Decline the whole thing.
+  if (fetched.some((f) => f === null)) return null;
+
+  // Stitch the parts into one continuous series, then trim to the request.
+  const parts = wanted.map((part, i) => ({
+    part,
+    data: fetched[i] as Record<string, Int16Array>,
+  }));
 
   const dates: string[] = [];
   const values: Record<string, (number | null)[]> = {};
