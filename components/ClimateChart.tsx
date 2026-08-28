@@ -145,6 +145,16 @@ interface Props {
   gddConfig: GddConfig;
   smoothing: number;
   lastObserved: string | null;
+  /**
+   * Which crop the GDD base belongs to, and how to change it.
+   *
+   * Passed in so the crop can be named in the variable label and offered right
+   * beside the chart when GDD is selected — a user could not tell what crop the
+   * degree days were for, which is the one thing that makes them mean anything.
+   */
+  gddPresetKey?: string;
+  gddPresets?: Record<string, { label: string; short: string }>;
+  onGddPresetChange?: (key: string) => void;
   /** Provenance for the CSV and figure exports — a chart that leaves the app
    *  without naming its source undercuts the whole argument for the picker. */
   exportContext?: ExportContext;
@@ -177,6 +187,7 @@ export default function ClimateChart(props: Props) {
     records, field, onFieldChange, mode, onModeChange,
     compareYears, onCompareChange, currentYear, availableYears,
     units, gddConfig, smoothing, lastObserved, waterStatus, exportContext,
+    gddPresetKey, gddPresets, onGddPresetChange,
   } = props;
 
   const chartRef = useRef<HTMLDivElement>(null);
@@ -188,6 +199,17 @@ export default function ClimateChart(props: Props) {
   const [showTable, setShowTable] = useState(false);
 
   const varDef = VARIABLES.find((v) => v.field === field) ?? VARIABLES[0];
+
+  /**
+   * Growing degree days are named with their crop everywhere they appear.
+   *
+   * "Growing degree days" alone is an unanswerable number — 5,700 of them means
+   * nothing until you know the base temperature, which is really a crop. A user
+   * hit exactly this and had to hunt for the setting.
+   */
+  const gddCrop = gddPresetKey && gddPresets ? gddPresets[gddPresetKey]?.short : null;
+  const varLabel =
+    varDef.field === "gdd" && gddCrop ? `${varDef.label} — ${gddCrop}` : varDef.label;
   const quantity = varDef.quantity;
   const effectiveMode: ViewMode = varDef.accumulable ? mode : "daily";
 
@@ -338,34 +360,33 @@ export default function ClimateChart(props: Props) {
       [
         { header: "month_day", value: (r) => r.key },
         { header: "date_label", value: (r) => r.label },
-        { header: `normal_mean_${unit}`, value: (r) => fmt(r.normal) },
-        { header: "p10", value: (r) => fmt(r.band90?.[0]) },
-        { header: "p25", value: (r) => fmt(r.band50?.[0]) },
-        { header: "p75", value: (r) => fmt(r.band50?.[1]) },
-        { header: "p90", value: (r) => fmt(r.band90?.[1]) },
+        // The long-term average and the years actually plotted, nothing else.
+        // The percentile columns were dropped at the user's request: they made
+        // the file wide and are trivially recomputed from the raw record by
+        // anyone who wants them.
+        { header: `long_term_average_${unit}`, value: (r) => fmt(r.normal) },
         ...seriesYears.map((y) => ({
           header: String(y),
           value: (r: Row) => fmt(r[`y${y}`] as number | null | undefined),
         })),
       ],
       csvHeader(exportContext, [
-        `Chart: Season tracker — ${varDef.label}`,
+        `Chart: Season tracker — ${varLabel}`,
         `View: ${viewLabel}`,
         `Units: ${unit}`,
         `Normal band: ${bandYearCount} years` +
           (bandFirstYear && bandLastYear ? ` (${bandFirstYear}–${bandLastYear})` : "") +
           (excludedFromBand > 0 ? `, ${excludedFromBand} left out as incomplete` : ""),
         effectiveMode === "daily" && !isMonthlySource
-          ? `Smoothing: ±${smoothing}-day window on the normals`
+          ? `Smoothing: ±${smoothing}-day window on the long-term average`
           : "Smoothing: none",
-        "Columns p10–p90 are percentiles of the same normal pool.",
       ])
     );
     return {
       csv,
       filename: `${slug(
         exportContext?.placeName ?? "texas",
-        varDef.label,
+        varLabel,
         exportContext?.sourceId,
         today()
       )}.csv`,
@@ -375,7 +396,7 @@ export default function ClimateChart(props: Props) {
   function figureForChart() {
     return {
       meta: {
-        title: `Season tracker — ${varDef.label}`,
+        title: `Season tracker — ${varLabel}`,
         subtitle:
           `${exportContext?.placeName ? `${exportContext.placeName} · ` : ""}` +
           `${viewLabel} · ${unit} · normal from ${bandYearCount} years`,
@@ -398,7 +419,7 @@ export default function ClimateChart(props: Props) {
       },
       filename: `${slug(
         exportContext?.placeName ?? "texas",
-        varDef.label,
+        varLabel,
         exportContext?.sourceId,
         today()
       )}.png`,
@@ -454,7 +475,7 @@ export default function ClimateChart(props: Props) {
         {/* Unit lives here rather than as a rotated axis label — at this axis
             width a rotated label collides with the tick values. */}
         <span className="badge">
-          {varDef.label}
+          {varLabel}
           {effectiveMode === "accumulated"
             ? " · season to date"
             : isMonthlySource
@@ -465,9 +486,9 @@ export default function ClimateChart(props: Props) {
         <span className="badge">{records.length.toLocaleString()} days loaded</span>
       </div>
       <p className="card-sub">
-        The gray band is what {availableYears[0]}–{currentYear - 1} did on each calendar day at this
-        point — the darker inner band is the middle half of years, the lighter outer band the middle
-        80%. Pick any years to draw on top.
+        The dashed line is the {availableYears[0]}–{currentYear - 1} average for each calendar day
+        at this point, and the grey band shows how much the individual years varied around it. Pick
+        any year to draw on top.
       </p>
 
       <div className="controls">
@@ -513,6 +534,31 @@ export default function ClimateChart(props: Props) {
                 {isMonthlySource ? "Monthly" : "Day by day"}
               </button>
             </div>
+          </div>
+        )}
+
+        {/*
+          The crop appears NEXT TO the chart, only when growing degree days are
+          being shown. It used to live in a settings row further down the page,
+          and a user could not work out what crop the degree days were for —
+          reasonably, since without a base temperature the number means nothing.
+          Shown here it is unmissable, and hidden for every other variable so it
+          does not clutter the row.
+        */}
+        {field === "gdd" && gddPresets && onGddPresetChange && (
+          <div className="field">
+            <label htmlFor="gdd-crop">Crop</label>
+            <select
+              id="gdd-crop"
+              value={gddPresetKey}
+              onChange={(e) => onGddPresetChange(e.target.value)}
+            >
+              {Object.entries(gddPresets).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v.label}
+                </option>
+              ))}
+            </select>
           </div>
         )}
 

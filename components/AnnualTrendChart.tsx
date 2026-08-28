@@ -88,6 +88,8 @@ interface Props {
   field: Field;
   onFieldChange: (f: Field) => void;
   waterLoading?: boolean;
+  /** Crop the GDD base belongs to, so "growing degree days" names its crop here too. */
+  gddCropShort?: string;
   /** Provenance for the CSV and figure exports. */
   exportContext?: ExportContext;
 }
@@ -100,13 +102,20 @@ export default function AnnualTrendChart({
   field,
   onFieldChange,
   waterLoading = false,
+  gddCropShort,
   exportContext,
 }: Props) {
   const [window, setWindow] = useState(DEFAULT_TREND_WINDOW);
   const [showTable, setShowTable] = useState(false);
   const chartRef = useRef<HTMLDivElement>(null);
 
-  const def = AGGREGATES.find((a) => a.field === field) ?? AGGREGATES[0];
+  const defBase = AGGREGATES.find((a) => a.field === field) ?? AGGREGATES[0];
+  // Growing degree days name their crop here too — the number is unreadable
+  // without knowing which base temperature produced it.
+  const def =
+    defBase.field === "gdd" && gddCropShort
+      ? { ...defBase, label: `${defBase.label} — ${gddCropShort}` }
+      : defBase;
   const isWaterField = WATER_TREND_FIELDS.includes(field) || field === "eto";
   const quantity = def.quantity;
   const unit = unitLabel(quantity, units);

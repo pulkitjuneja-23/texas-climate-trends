@@ -209,8 +209,19 @@ export default function LocationPicker({ place, onChange, cellSize = null }: Pro
         <div className="field">
           <label>Find your field by</label>
           <div className="seg">
+            {/*
+              "Town or city", not "Address".
+
+              A user typed their station's street address, got nothing, and was
+              told to use a city instead. Rural street addresses frequently are
+              not in OpenStreetMap, so the old label promised something the
+              geocoder cannot deliver outside towns. The capability still works
+              where the address exists — it is the PROMISE that was wrong, and a
+              tool that fails at what it advertises loses trust for the parts
+              that do work.
+            */}
             <button aria-pressed={mode === "search"} onClick={() => setMode("search")}>
-              Address / town
+              Town or city
             </button>
             <button aria-pressed={mode === "coords"} onClick={() => setMode("coords")}>
               Coordinates
@@ -236,8 +247,8 @@ export default function LocationPicker({ place, onChange, cellSize = null }: Pro
           >
             <input
               type="text"
-              aria-label="Address or town"
-              placeholder="Address, town or county — e.g. Hereford, TX"
+              aria-label="Town or city, and state"
+              placeholder="Town and state — e.g. Beeville, TX"
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);
@@ -264,7 +275,10 @@ export default function LocationPicker({ place, onChange, cellSize = null }: Pro
                 ))
               ) : (
                 <div className="small muted" style={{ padding: "10px 12px" }}>
-                  No matches. Try just the town and state, or switch to Coordinates.
+                  No matches. Search works on <strong>towns and cities</strong> — a rural street
+                  address usually isn&apos;t on the map. Try the nearest town and state (e.g.
+                  Beeville, TX), then <strong>click the map</strong> to move the pin onto your
+                  field. Coordinates work too, if you have them.
                 </div>
               )}
             </div>

@@ -109,7 +109,11 @@ export interface FigureMeta {
 }
 
 export interface FigureOptions {
-  /** Pixel multiplier. 3 gives roughly print resolution for a screen-sized chart. */
+  /**
+   * Pixel multiplier. 4 puts a screen-width chart comfortably past 300 dpi at
+   * report width, and the SVG is rasterised at that size rather than upscaled,
+   * so the cost is file size only — not softness.
+   */
   scale?: number;
   /** Painted behind the chart — an SVG is transparent, and a dark-mode chart on
    *  transparency is unreadable in a white document. */
@@ -130,7 +134,7 @@ export async function svgToPngBlob(
   meta: FigureMeta,
   opts: FigureOptions = {}
 ): Promise<Blob> {
-  const scale = opts.scale ?? 3;
+  const scale = opts.scale ?? 4;
   const background = opts.background ?? "#ffffff";
   const foreground = opts.foreground ?? "#111111";
   const muted = opts.muted ?? "#666666";
@@ -143,8 +147,23 @@ export async function svgToPngBlob(
   const clone = svg.cloneNode(true) as SVGSVGElement;
   inlineStyles(svg, clone);
   clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-  clone.setAttribute("width", String(w));
-  clone.setAttribute("height", String(h));
+
+  /**
+   * THE SVG IS GIVEN ITS FULL OUTPUT SIZE, NOT THE ON-SCREEN SIZE.
+   *
+   * This is what makes the export sharp, and getting it wrong is subtle: an
+   * <img> rasterises an SVG once, at the size the SVG declares. Declaring the
+   * on-screen 700x420 and then drawing it into a 3x canvas rasterises at
+   * 700x420 and BITMAP-SCALES that up — so the figure came out soft, exactly as
+   * a screenshot would. Nothing errors; it just looks mediocre.
+   *
+   * Declaring width/height at the output size while keeping the viewBox at the
+   * original coordinates makes the browser rasterise the vector at full
+   * resolution instead. Text and lines are then genuinely crisp rather than
+   * enlarged pixels.
+   */
+  clone.setAttribute("width", String(w * scale));
+  clone.setAttribute("height", String(h * scale));
   clone.setAttribute("viewBox", `0 0 ${w} ${h}`);
 
   const svgText = new XMLSerializer().serializeToString(clone);
@@ -250,7 +269,7 @@ export async function downloadChartPng(
   container: HTMLElement,
   filename: string,
   meta: FigureMeta,
-  scale = 3
+  scale = 4
 ): Promise<void> {
   const svg = container.querySelector("svg");
   if (!svg) throw new Error("No chart was found to export.");

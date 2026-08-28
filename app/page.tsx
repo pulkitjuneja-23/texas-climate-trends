@@ -698,7 +698,11 @@ export default function Page() {
                   </div>
 
                   <div className="tile">
-                    <div className="k">GDD since</div>
+                    {/* Names the crop, because "GDD since" alone is
+                        unanswerable — a user asked what crop it meant. */}
+                    <div className="k">
+                      GDD since · {GDD_PRESETS[gddPreset].short}
+                    </div>
                     <div className="v">
                       {gddStat
                         ? Math.round(convert(gddStat.value, "gdd", units)).toLocaleString()
@@ -948,6 +952,9 @@ export default function Page() {
               smoothing={7}
               lastObserved={history?.lastObserved ?? null}
               exportContext={exportContext}
+              gddPresetKey={gddPreset}
+              gddPresets={GDD_PRESETS}
+              onGddPresetChange={(k) => setGddPreset(k as keyof typeof GDD_PRESETS)}
               waterStatus={{
                 loading: waterLoading,
                 available: dailyEt.size > 0,
@@ -984,6 +991,7 @@ export default function Page() {
               field={trendField}
               onFieldChange={setTrendField}
               waterLoading={waterLoading}
+              gddCropShort={GDD_PRESETS[gddPreset].short}
               exportContext={exportContext}
             />
           </>

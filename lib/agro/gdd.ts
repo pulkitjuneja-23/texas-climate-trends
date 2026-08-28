@@ -29,10 +29,22 @@ export const CORN_GDD: GddConfig = { base: 10, cutoff: 30, method: "modified" };
 export const COTTON_GDD: GddConfig = { base: 15.6, cutoff: 32.2, method: "simple" };
 export const WHEAT_GDD: GddConfig = { base: 4.4, cutoff: 30, method: "simple" };
 
-export const GDD_PRESETS: Record<string, { label: string; config: GddConfig }> = {
-  corn: { label: "Corn / sorghum (50-86°F)", config: CORN_GDD },
-  cotton: { label: "Cotton (60-90°F)", config: COTTON_GDD },
-  wheat: { label: "Wheat (40°F)", config: WHEAT_GDD },
+/**
+ * `short` exists so the crop can be named wherever GDD is shown.
+ *
+ * A user asked "what crop are the growing degree days for?" and only found the
+ * base-temperature selector after starting to write the question. Growing
+ * degree days are meaningless without a base temperature, and a base
+ * temperature is really a crop — so the crop belongs in the LABEL, not only in
+ * a setting somewhere below.
+ */
+export const GDD_PRESETS: Record<
+  string,
+  { label: string; short: string; config: GddConfig }
+> = {
+  corn: { label: "Corn / sorghum (50-86°F)", short: "corn / sorghum", config: CORN_GDD },
+  cotton: { label: "Cotton (60-90°F)", short: "cotton", config: COTTON_GDD },
+  wheat: { label: "Wheat (40°F)", short: "wheat", config: WHEAT_GDD },
 };
 
 export function dailyGdd(
