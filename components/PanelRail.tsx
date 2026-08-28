@@ -88,15 +88,9 @@ export default function PanelRail({ active, onChange }: Props) {
                   <i className="art-dry" />
                 </span>
               )}
-              {p.id === "analog" && (
-                <svg viewBox="0 0 120 54" preserveAspectRatio="none">
-                  <path className="a-ghost" d="M4 48 L26 42 L48 33 L70 26 L92 20 L116 15" />
-                  <path className="a-ghost" d="M4 50 L26 47 L48 40 L70 28 L92 17 L116 9" />
-                  <path className="a-dry" d="M4 49 L26 45 L48 39 L70 35 L92 33 L116 32" />
-                  <path className="a-now" d="M4 48 L26 43 L48 34 L64 28" />
-                  <circle className="a-dot" cx="64" cy="28" r="3.4" />
-                </svg>
-              )}
+              {/* Rows already picked beside rows still standing — the same
+                  field in two states, which is the question this panel asks. */}
+              {p.id === "analog" && <span className="art-photo art-harvest" />}
               {p.id === "forecast" && (
                 <span className="art-conf">
                   <i style={{ width: "88%", background: "var(--good)" }} />
@@ -119,9 +113,6 @@ export default function PanelRail({ active, onChange }: Props) {
               <span className="pc-blurb">{p.blurb}</span>
             </span>
 
-            <span className="pc-state" aria-hidden="true">
-              {open ? "Showing" : "Open"}
-            </span>
           </button>
         );
       })}

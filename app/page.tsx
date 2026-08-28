@@ -615,15 +615,28 @@ export default function Page() {
 
   return (
     <>
-      <div className="topbar">
-        <div className="topbar-inner">
+      {/*
+        Masthead ON the photograph — there is no separate ribbon above it.
+        A cotton harvester cutting rows at Batesville, Texas; public domain
+        (USDA), so it carries no licence risk when the repo goes public.
+
+        TRADE-OFF WORTH KNOWING: the source picker used to live in a sticky bar
+        precisely so it could be changed from anywhere on the page. It scrolls
+        away now. If that turns out to matter, the fix is a slim bar that
+        appears on scroll, not restoring the old ribbon.
+
+        The dark gradient under the photo is not decoration — it is what makes
+        the masthead legible, and it is also the fallback if the image never
+        arrives on a slow rural connection.
+      */}
+      <header className="hero">
+        <div className="hero-photo" aria-hidden="true" />
+        <div className="hero-bar">
           <div className="brand">
             <h1>Texas Climate Trends</h1>
             <small>{historyYears(currentYear)} years of weather history for your field</small>
           </div>
 
-          {/* Source lives in the sticky bar so it can be changed from anywhere
-              on the page without scrolling back to the top. */}
           {sourceList.length > 0 && (
             <SourceSelect
               sources={sourceList}
@@ -653,37 +666,6 @@ export default function Page() {
               </button>
             ))}
           </div>
-        </div>
-      </div>
-
-      {/*
-        Sky-to-field band under the sticky bar.
-
-        Drawn, not photographed: an inline SVG horizon costs about a kilobyte,
-        scales to any width, and re-tints with the theme — where a photograph
-        would be hundreds of kilobytes on a rural connection and would fight the
-        charts for attention. It sits ABOVE all data and behind nothing: the
-        validated chart palette depends on a neutral surface, so no background
-        art goes near a plot.
-      */}
-      {/*
-        A real photograph, and a specific one: a cotton harvester cutting rows
-        at Batesville, Texas. Public domain (USDA), so it carries no licence
-        risk when the repo goes public. A generic stock field would have been
-        easier to source and would have said nothing true about the place.
-
-        The gradient under it is not decoration — it is the fallback. If the
-        image fails on a slow rural connection the band still has a sky and a
-        readable headline rather than collapsing to bare text.
-      */}
-      <header className="hero" aria-labelledby="hero-title">
-        <div className="hero-photo" aria-hidden="true" />
-        <div className="hero-inner">
-          <h1 id="hero-title">Know your field&rsquo;s weather, not the region&rsquo;s</h1>
-          <p>
-            {historyYears(currentYear)} years of daily weather for one point in Texas — with the
-            data source named, never hidden.
-          </p>
         </div>
         <p className="hero-credit">Batesville, Texas · USDA, public domain</p>
       </header>

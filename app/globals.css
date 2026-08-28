@@ -214,12 +214,15 @@ a {
   position: absolute;
   inset: 0;
   z-index: -1;
+  /* Top-down now, because the masthead sits across the top rather than down
+     the left. Heavy enough at the very top to carry white text, clearing
+     quickly so the field itself is still the picture. */
   background-image: linear-gradient(
-      100deg,
-      rgba(12, 10, 8, 0.9) 0%,
-      rgba(12, 10, 8, 0.72) 38%,
-      rgba(12, 10, 8, 0.18) 68%,
-      rgba(12, 10, 8, 0.05) 100%
+      to bottom,
+      rgba(12, 10, 8, 0.82) 0%,
+      rgba(12, 10, 8, 0.55) 32%,
+      rgba(12, 10, 8, 0.12) 62%,
+      rgba(12, 10, 8, 0.25) 100%
     ),
     url("/img/hero-cotton.jpg");
   background-size: cover, cover;
@@ -237,36 +240,82 @@ a {
   color: rgba(255, 255, 255, 0.62);
 }
 
-.hero-inner {
-  max-width: min(1680px, 94vw);
-  margin: 0 auto;
-  padding: clamp(56px, 8vw, 104px) 20px clamp(56px, 8vw, 104px);
+/* Enough height that the photograph reads as a place, not a strip. */
+.hero {
+  min-height: clamp(190px, 22vw, 300px);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
 }
 
 /*
-  Light text, fixed — NOT theme tokens.
+  The masthead, sitting on the photograph.
 
-  The scrim behind it is dark in both themes, so `--text-primary` would flip to
-  near-black in light mode and vanish. This is the one place in the stylesheet
-  where a literal colour is correct: the surface it sits on is a photograph,
-  not a themed surface.
+  Colours here are FIXED LIGHT VALUES, not theme tokens: the surface behind
+  them is a photograph with a dark scrim in both themes, so `--text-primary`
+  would flip to near-black in light mode and disappear. This is the one region
+  of the stylesheet where literal colours are correct.
 */
-.hero-inner h1 {
-  margin: 0 0 10px;
-  font-size: clamp(1.6rem, 3.6vw, 2.6rem);
-  line-height: 1.12;
-  letter-spacing: -0.02em;
-  color: #ffffff;
-  text-shadow: 0 1px 18px rgba(0, 0, 0, 0.45);
-  max-width: 20ch;
+.hero-bar {
+  position: relative;
+  /* `width: 100%` is load-bearing: .hero is a flex column, so a child with
+     `margin: 0 auto` and no width shrinks to its content and centres, which
+     pulled the whole masthead into the middle of the photograph. */
+  width: 100%;
+  max-width: min(1680px, 94vw);
+  margin: 0 auto;
+  padding: 22px 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
 }
 
-.hero-inner p {
+/* Name left, controls right. */
+.hero-bar .brand {
+  margin-right: auto;
+}
+
+.hero-bar .brand h1 {
   margin: 0;
-  max-width: 52ch;
-  font-size: 1rem;
-  color: rgba(255, 255, 255, 0.88);
-  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.4);
+  font-size: 1.18rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #ffffff;
+  text-shadow: 0 1px 14px rgba(0, 0, 0, 0.5);
+}
+
+.hero-bar .brand small {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.76rem;
+  color: rgba(255, 255, 255, 0.82);
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.45);
+}
+
+/* Controls need their own ground to be legible over a photograph. */
+.hero-bar .seg {
+  background: rgba(18, 15, 12, 0.55);
+  border-color: rgba(255, 255, 255, 0.26);
+  backdrop-filter: blur(6px);
+}
+
+.hero-bar .seg button {
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.hero-bar .seg button[aria-pressed="true"] {
+  background: var(--series-1);
+  color: #ffffff;
+}
+
+/* The source picker's own trigger, same treatment. */
+.hero-bar .src-trigger,
+.hero-bar button.src-trigger {
+  background: rgba(18, 15, 12, 0.55);
+  border-color: rgba(255, 255, 255, 0.26);
+  color: #ffffff;
+  backdrop-filter: blur(6px);
 }
 
 @media (max-width: 700px) {
@@ -882,12 +931,14 @@ button:disabled {
 .art-good { background-image: url("/img/crop-good.jpg"); }
 .art-dry { background-image: url("/img/crop-dry.jpg"); }
 
-/* Analog: this season traced against the ones it resembles. */
-.pc-analog .pc-art { background: var(--surface-raised); }
-.a-ghost { fill: none; stroke: var(--baseline); stroke-width: 1.6; }
-.a-dry { fill: none; stroke: var(--drought); stroke-width: 2.2; }
-.a-now { fill: none; stroke: var(--series-1); stroke-width: 2.6; }
-.a-dot { fill: var(--series-1); }
+/* Analog: picked rows beside standing ones — one field, two states. */
+.art-photo {
+  display: block;
+  height: 100%;
+  background-size: cover;
+  background-position: center;
+}
+.art-harvest { background-image: url("/img/crop-harvest.jpg"); }
 
 /* Forecast: the confidence ladder, at cover size. */
 .art-conf {
@@ -942,18 +993,9 @@ button:disabled {
   color: var(--text-secondary);
 }
 
-.pc-state {
-  display: block;
-  padding: 8px 14px 12px;
-  margin-top: auto;
-  font-size: 0.66rem;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
-.panel-cover[aria-expanded="true"] .pc-state { color: var(--soil); }
+/* The open cover is marked by its border and its own art, not by a word —
+   "Open/Showing" was noise on a row that already shows which one is open. */
+.pc-text { padding-bottom: 14px; }
 
 /*
   The stage. Its ground changes with the open panel so the four views do not
@@ -971,39 +1013,19 @@ button:disabled {
 /* Forecast sits on plain paper; the confidence bars are the colour. */
 
 /*
-  The thirty-year view inverts. It is the only band that goes dark, which is
-  what makes it read as a different register — a long look back rather than a
-  reading of now.
+  The thirty-year view keeps a slightly deeper ground than its neighbours, but
+  it FOLLOWS THE THEME rather than forcing dark.
+
+  Forcing a dark card was wrong and it showed: in light mode the labels and the
+  segmented buttons inherited light-theme colours onto a near-black surface and
+  became unreadable. A panel that is dark in a light page is not a register
+  change, it is a contrast bug. So the ground comes from the theme's own
+  surface, nudged toward soil so the band still reads as a different chapter.
 */
 .stage-trend > .card {
-  background: #17140f;
-  border-color: #2b251d;
-  color: #f7f3ec;
+  background: color-mix(in srgb, var(--soil) 8%, var(--surface));
+  border-color: color-mix(in srgb, var(--soil) 26%, var(--border));
 }
-.stage-trend > .card h2,
-.stage-trend > .card .hv { color: #f7f3ec; }
-.stage-trend > .card .card-sub,
-.stage-trend > .card .small,
-.stage-trend > .card .muted,
-.stage-trend > .card .hk,
-.stage-trend > .card label { color: #b9b0a1; }
-.stage-trend > .card .badge {
-  background: rgba(255, 255, 255, 0.08);
-  color: #d9d2c6;
-}
-.stage-trend > .card select,
-.stage-trend > .card button {
-  background: rgba(255, 255, 255, 0.06);
-  color: #f7f3ec;
-  border-color: rgba(255, 255, 255, 0.16);
-}
-.stage-trend > .card button[aria-pressed="true"] {
-  background: var(--series-1);
-  border-color: var(--series-1);
-  color: #fff;
-}
-.stage-trend > .card table th { background: rgba(255, 255, 255, 0.05); color: #f7f3ec; }
-.stage-trend > .card table td { border-color: rgba(255, 255, 255, 0.1); }
 
 @media (max-width: 1100px) {
   .panel-rail { grid-template-columns: repeat(2, 1fr); }
@@ -1639,13 +1661,26 @@ tbody tr:last-child td {
   font-size: 0.78rem;
 }
 
+/*
+  The closing text sits on its own slightly deeper ground rather than running
+  straight off the page. Sources and caveats are a different kind of reading
+  from the figures above, and a faint tonal shift says so without a heading.
+  Derived from the theme's own surface, so it stays a shade — not a black slab
+  in a light page.
+*/
 footer.site {
+  background: color-mix(in srgb, var(--soil) 7%, var(--surface));
   border-top: 1px solid var(--border);
-  padding-top: 18px;
-  margin-top: 8px;
-  color: var(--text-muted);
+  border-radius: var(--radius);
+  padding: 20px 22px;
+  margin-top: 26px;
+  color: var(--text-secondary);
   font-size: 0.76rem;
   line-height: 1.6;
+}
+
+footer.site a {
+  color: var(--text-primary);
 }
 
 .skeleton {

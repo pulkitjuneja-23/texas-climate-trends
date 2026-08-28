@@ -18,6 +18,7 @@ government work has neither problem.
 |---|---|---|---|
 | `hero-cotton.jpg` | Cotton harvester cutting rows, **Batesville, Texas** | U.S. Department of Agriculture, via Wikimedia Commons | Public domain |
 | `crop-good.jpg` | Dense standing cotton — a **different crop of the same Batesville frame** | U.S. Department of Agriculture, via Wikimedia Commons | Public domain |
+| `crop-harvest.jpg` | Picked rows beside standing cotton — **another crop of the same Batesville frame** | U.S. Department of Agriculture, via Wikimedia Commons | Public domain |
 | `crop-dry.jpg` | Drought-damaged corn | Tim McCabe, USDA NRCS Photo Gallery, via Wikimedia Commons | Public domain |
 
 ## Why these three
