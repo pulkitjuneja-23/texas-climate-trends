@@ -13,9 +13,13 @@
 # The job exits without uploading anything at all when Idaho's feed has not
 # advanced since the last run, which is common — it stalls for days at a time.
 #
-# NOTE: GitHub disables scheduled workflows in a repository after 60 days with
-# no commits, and emails the owner when it does. If the refresh silently stops,
-# check that first — it is far more likely than a code fault.
+# NOTE ON THE 60-DAY RULE: GitHub disables scheduled workflows after 60 days of
+# no repository activity, but its documentation scopes that to PUBLIC
+# repositories, and this one is private — so it should not apply. Community
+# reports are not unanimous, so it is worth knowing rather than relying on:
+# GitHub emails the owner if it ever happens, and re-enabling is one click in
+# the Actions tab. Any push resets the clock. If the data ever looks stuck,
+# check this before suspecting a code fault.
 
 name: Refresh gridMET (daily)
 

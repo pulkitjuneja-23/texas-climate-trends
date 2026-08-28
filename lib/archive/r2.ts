@@ -22,11 +22,37 @@ export interface R2Config {
   bucket: string;
 }
 
+/**
+ * Strip whitespace AND a byte-order mark from a credential.
+ *
+ * These values are copied by hand into a `.env.local` or a CI secret, and both
+ * routes attach invisible characters. A BOM cost a real debugging cycle: setting
+ * the secrets by piping into `gh secret set` from PowerShell 5.1 prefixed the
+ * value with U+FEFF, and the only symptom was
+ *
+ *   TypeError: Cannot convert argument to a ByteString because the character
+ *   at index 0 has a value of 65279
+ *
+ * thrown from `fetch` — which names neither the credential nor the cause. A
+ * trailing space from a sloppy copy-paste fails just as opaquely, as a
+ * signature mismatch. Neither is ever intentional, so strip both.
+ */
+const BOM_CODE_POINT = 65279; // U+FEFF
+
+function clean(v: string | undefined): string | undefined {
+  if (v === undefined) return undefined;
+  // Matched by code point rather than written as a character or an escape. A
+  // literal BOM in source is invisible in every editor and is the first thing a
+  // well-meaning re-encode eats — which is how it got here in the first place.
+  const body = v.charCodeAt(0) === BOM_CODE_POINT ? v.slice(1) : v;
+  return body.trim() || undefined;
+}
+
 export function r2ConfigFromEnv(env: Record<string, string | undefined>): R2Config | null {
-  const accountId = env.R2_ACCOUNT_ID;
-  const accessKeyId = env.R2_ACCESS_KEY_ID;
-  const secretAccessKey = env.R2_SECRET_ACCESS_KEY;
-  const bucket = env.R2_BUCKET;
+  const accountId = clean(env.R2_ACCOUNT_ID);
+  const accessKeyId = clean(env.R2_ACCESS_KEY_ID);
+  const secretAccessKey = clean(env.R2_SECRET_ACCESS_KEY);
+  const bucket = clean(env.R2_BUCKET);
   if (!accountId || !accessKeyId || !secretAccessKey || !bucket) return null;
   return { accountId, accessKeyId, secretAccessKey, bucket };
 }

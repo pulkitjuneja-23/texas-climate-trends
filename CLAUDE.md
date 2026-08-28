@@ -929,8 +929,29 @@ object is overwritten in place. Needs five GitHub secrets (the four `R2_*` plus
 its recent days; an append-only refresh would keep the first, provisional version of every day
 forever.
 
-**GitHub disables scheduled workflows after 60 days with no commits.** If the data goes stale, check
-that before suspecting the code.
+**The 60-day rule is scoped to PUBLIC repos** — GitHub's docs say scheduled workflows are disabled
+after 60 days of inactivity "in a public repository", and this repo is private, so it should not
+apply. Community reports are not unanimous; GitHub emails on disabling and re-enabling is one click.
+Check it before suspecting the code if the data goes stale.
+
+**A BOM in a secret cost a debugging cycle — the PowerShell trap again, in a new place.** Setting the
+repo secrets by piping a value into `gh secret set` from PowerShell 5.1 prefixes it with U+FEFF,
+because the pipe to a native command encodes with a BOM. The stored `R2_ACCOUNT_ID` then began with
+an invisible character and the first CI run died with
+
+```
+TypeError: Cannot convert argument to a ByteString because the character at index 0
+has a value of 65279
+```
+
+thrown from `fetch` — naming neither the credential nor the cause (the account id builds the `host`
+header, hence "index 0"). **Use `gh secret set NAME --body $value`, never a pipe.** `r2ConfigFromEnv`
+now strips a leading BOM and surrounding whitespace, so neither this nor a trailing space from a
+sloppy paste can produce an opaque signature failure again. The check is written as a code-point
+comparison, not a literal or an escape: a raw BOM in source is invisible in every editor.
+
+The existing "NEVER EDIT SOURCE FILES THROUGH POWERSHELL" rule should be read as covering **piping to
+native commands**, not just file reads and writes.
 
 #### THE YEAR-BOUNDARY LANDMINE — found before it shipped, would have been silent
 

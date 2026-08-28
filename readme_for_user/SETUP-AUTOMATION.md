@@ -97,10 +97,14 @@ gridMET on its own schedule and often goes several days without adding anything.
 nothing new, the job checks, says "already current", and stops without uploading. You'll see a
 green tick and a run that took twenty seconds. That is the job working properly, not skipping.
 
-**GitHub switches off scheduled jobs in a quiet repository.** If nobody commits anything for 60
-days, GitHub pauses the schedule and emails you. Clicking **Enable workflow** in the Actions tab
-turns it straight back on. If the data ever seems stuck, check this before anything else — it is
-much more likely than a real fault.
+**The "60-day rule" probably doesn't apply to you.** GitHub switches off scheduled jobs in a
+repository that has been quiet for 60 days — but its documentation says that applies to *public*
+repositories, and yours is private. So this most likely never happens.
+
+It's still worth knowing, because a few people report seeing it on private repositories too. If it
+ever does: GitHub emails you, and clicking **Enable workflow** in the Actions tab turns it straight
+back on. Any change pushed to the repository resets the clock. If the data ever seems stuck, check
+this before anything else — it is much more likely than a real fault.
 
 ---
 
