@@ -35,6 +35,8 @@ export const archiveEnabled = Boolean(BASE);
 
 /** A chunk is immutable; the manifest is not. Re-read it occasionally. */
 const MANIFEST_TTL_MS = 10 * 60 * 1000;
+/** How soon to look again while a rebuild has the archive switched off. */
+const BUILDING_RECHECK_MS = 60 * 1000;
 const FETCH_TIMEOUT_MS = 8000;
 
 let manifestCache: { at: number; value: Manifest | null } | null = null;
@@ -74,6 +76,22 @@ export async function getManifest(): Promise<Manifest | null> {
       `[archive] manifest version ${m.version}, this build expects ${MANIFEST_VERSION} — ignoring the archive`
     );
     manifestCache = { at: Date.now(), value: null };
+    return null;
+  }
+
+  /**
+   * A rebuild is part-way through overwriting chunks the manifest describes.
+   * Anything read now would be sliced at the wrong offsets and look completely
+   * normal doing it, so decline until the flag clears.
+   *
+   * Cached for a SHORT time, not the usual ten minutes: the flag is up for
+   * about twenty-five minutes once a year, and the site should return to the
+   * fast path promptly once it drops rather than staying on Earth Engine for
+   * another ten.
+   */
+  if (m?.building) {
+    console.warn("[archive] a rebuild is in progress — falling back to Earth Engine");
+    manifestCache = { at: Date.now() - MANIFEST_TTL_MS + BUILDING_RECHECK_MS, value: null };
     return null;
   }
 

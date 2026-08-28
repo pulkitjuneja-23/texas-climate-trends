@@ -20,6 +20,16 @@
  *   --bands N    stop after N latitude bands (for a quick trial run)
  *   --vars a,b   only these variables (default: all four)
  *   --start YYYY first year of the archive (default 1995)
+ *   --force      refresh even if the archive is already up to date
+ *
+ * THE TWO SCHEDULED JOBS (see .github/workflows/)
+ *   daily   --r2 --part current   ~1,371 uploads, a few minutes
+ *   yearly  --r2                  full rebuild, ~22,200 uploads, ~25 minutes
+ *
+ * The daily job re-downloads the WHOLE current part every time rather than
+ * appending a day. That is deliberate: gridMET revises its recent days, so an
+ * append-only refresh would keep the first, provisional version of every day
+ * forever.
  *
  * MEMORY
  * One latitude band at a time, so peak usage is a few hundred MB rather than
@@ -45,11 +55,14 @@ import {
   PREFIX,
   MANIFEST_VERSION,
   MANIFEST_KEY,
+  ARCHIVE_ROLLOVER_MONTH,
+  settledThroughYear,
+  addDays,
   dayCount,
   type Manifest,
   type Part,
 } from "../lib/archive/layout.ts";
-import { r2ConfigFromEnv, putMany, type R2Config } from "../lib/archive/r2.ts";
+import { r2ConfigFromEnv, putMany, getObject, type R2Config } from "../lib/archive/r2.ts";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -86,6 +99,7 @@ const MAX_BANDS = arg("bands") ? Number(arg("bands")) : Infinity;
 const FROM_BAND = Number(arg("from-band") ?? 0);
 const ONLY_VARS = arg("vars")?.split(",");
 const START_YEAR = Number(arg("start") ?? 1995);
+const FORCE = flag("force");
 
 if (!OUT_DIR && !TO_R2) {
   console.error("Choose an output: --out <dir> for a local trial, or --r2 to upload.");
@@ -255,17 +269,119 @@ const latest = (dsXml.match(/<end>([^<]+)<\/end>/)?.[1] ?? "").slice(0, 10);
 if (!/^\d{4}-\d{2}-\d{2}$/.test(latest)) {
   throw new Error(`Could not read the latest available date from THREDDS (got "${latest}")`);
 }
-const thisYear = Number(latest.slice(0, 4));
+
+const PARTS: Part[] = ONLY_PART ? [ONLY_PART] : ["archive", "current"];
+const rebuildingArchive = PARTS.includes("archive");
+
+/**
+ * What the store already says about itself.
+ *
+ * A partial run MUST NOT invent the ranges of the parts it is not touching.
+ * Recomputing them looks harmless and is not: on the first run of a new year a
+ * current-only refresh would write "archive covers 1995-2026" into the manifest
+ * while the archive chunks still held 1995-2025 — and the reader takes its
+ * slicing offsets from the manifest. Every date in the record would shift, with
+ * nothing anywhere reporting an error.
+ */
+const existing: Manifest | null = r2
+  ? ((JSON.parse(
+      (await getObject(r2, MANIFEST_KEY))?.toString("utf8") ?? "null"
+    ) as Manifest | null) ?? null)
+  : null;
+
+/**
+ * Where the archive/current boundary sits.
+ *
+ * When the archive is being rebuilt, it extends to the last SETTLED year end —
+ * which is not simply last year, because a year only settles a month after it
+ * finishes (see ARCHIVE_ROLLOVER_MONTH). Otherwise the boundary is wherever the
+ * stored archive actually ends, read back rather than assumed.
+ *
+ * The current part then begins the day after, so the two parts are contiguous
+ * by construction. Through January that makes it span ~13 months, which is the
+ * intended behaviour: last year stays in the daily-refreshed part, collecting
+ * Idaho's revisions, until the rollover seals it.
+ */
+const today = new Date().toISOString().slice(0, 10);
+let archiveEnd: string;
+
+/**
+ * A previous rebuild died part-way and left the archive switched off.
+ *
+ * A current-only refresh must not proceed: it ends by publishing a clean
+ * manifest, which would clear the flag and turn the archive back on while its
+ * chunks are still half-rewritten. Only a full rebuild can honestly clear this.
+ */
+if (existing?.building && !rebuildingArchive) {
+  console.error(
+    `The manifest is flagged building:true, so a previous rebuild did not finish and the\n` +
+      `archive is switched off. Refreshing the current part alone would clear that flag and\n` +
+      `serve half-rewritten chunks as if they were sound.\n` +
+      `Run a full rebuild instead (no --part) to finish what was started.`
+  );
+  process.exit(1);
+}
+
+if (rebuildingArchive) {
+  archiveEnd = `${settledThroughYear(today)}-12-31`;
+} else if (existing) {
+  archiveEnd = existing.parts.archive.end;
+  const due = `${settledThroughYear(today)}-12-31`;
+  if (archiveEnd < due) {
+    console.log(
+      `\n  NOTE: the archive ends ${archiveEnd} but ${due} has now settled.\n` +
+        `  The annual rebuild is due — run without --part to roll ${due.slice(0, 4)} in.\n` +
+        `  Until then it stays in the current part, which is correct but larger.\n`
+    );
+  }
+} else {
+  console.error(
+    `Cannot refresh "${ONLY_PART}" alone: there is no manifest in the bucket to say where\n` +
+      `the archive ends, and guessing it would corrupt every date in the record.\n` +
+      `Run a full build first (no --part).`
+  );
+  process.exit(1);
+}
 
 const RANGES: Record<Part, { start: string; end: string }> = {
-  archive: { start: `${START_YEAR}-01-01`, end: `${thisYear - 1}-12-31` },
-  current: { start: `${thisYear}-01-01`, end: latest },
+  archive: { start: existing && !rebuildingArchive ? existing.parts.archive.start : `${START_YEAR}-01-01`, end: archiveEnd },
+  current: { start: addDays(archiveEnd, 1), end: latest },
 };
-const PARTS: Part[] = ONLY_PART ? [ONLY_PART] : ["archive", "current"];
+
+if (RANGES.current.start > RANGES.current.end) {
+  throw new Error(
+    `The archive already ends at ${archiveEnd}, past the latest available day ${latest}. ` +
+      `Nothing to refresh.`
+  );
+}
+
+/**
+ * Nothing new upstream — stop before spending a single upload.
+ *
+ * Idaho's feed stalls for days at a time, and a scheduled job that rewrites
+ * 1,371 identical objects each time it does is pure waste against the free
+ * allowance. Only applies to a plain refresh; an explicit rebuild always runs.
+ */
+if (!rebuildingArchive && existing && !FORCE) {
+  const c = existing.parts.current;
+  if (c.end === RANGES.current.end && c.start === RANGES.current.start) {
+    console.log(
+      `\nAlready current: gridMET's latest day is ${latest} and the archive already holds it.\n` +
+        `Nothing uploaded. Use --force to refresh anyway.`
+    );
+    process.exit(0);
+  }
+}
 
 for (const p of PARTS) {
   console.log(
     `  ${p}: ${RANGES[p].start} -> ${RANGES[p].end}  (${dayCount(RANGES[p].start, RANGES[p].end)} days)`
+  );
+}
+if (rebuildingArchive) {
+  console.log(
+    `  rollover: years settle in month ${ARCHIVE_ROLLOVER_MONTH}, so the archive seals through ` +
+      `${settledThroughYear(today)}`
   );
 }
 
@@ -291,6 +407,51 @@ for (const v of VARS) {
     `  ${v.key.padEnd(5)} scale=${varMeta[v.key].scaleFactor} offset=${varMeta[v.key].addOffset} ` +
       `fill=${varMeta[v.key].fillValue} units=${varMeta[v.key].units}`
   );
+}
+
+/**
+ * --- 3b. Switch the archive off for the duration of a rebuild ---
+ *
+ * Writing the manifest LAST protects a FIRST build: until it exists, a
+ * half-uploaded store is simply invisible. It does nothing for a REBUILD, where
+ * a valid manifest is already live and describing chunks that are being
+ * overwritten underneath it — and where a rollover changes how many days each
+ * part holds, so the reader's slicing offsets go wrong rather than merely stale.
+ *
+ * Raising `building` makes the site fall back to Earth Engine for the ~25
+ * minutes this takes. Slow once a year beats a plausible, wrong series.
+ *
+ * A refresh of the current part alone does not need this: its shape does not
+ * change, and a reader catching it mid-upload sees yesterday's values for a few
+ * cells, not misaligned ones.
+ */
+const needsBuildingFlag = Boolean(r2 && existing && rebuildingArchive);
+if (needsBuildingFlag) {
+  await flush(
+    [
+      {
+        key: MANIFEST_KEY,
+        body: json({ ...(existing as Manifest), building: true }),
+        opts: { contentType: "application/json", cacheControl: META_CACHE },
+      },
+    ],
+    "archive switched off for rebuild"
+  );
+
+  /**
+   * If the rebuild dies half-way, the flag stays up and the site keeps serving
+   * correct-but-slow Earth Engine answers indefinitely. That is the right
+   * direction to fail in, but it is invisible — so say plainly what to do.
+   */
+  process.on("exit", (code) => {
+    if (code !== 0) {
+      console.error(
+        `\nTHE ARCHIVE IS STILL SWITCHED OFF. This run did not finish, so the manifest\n` +
+          `still has building:true and the site is falling back to Earth Engine — correct\n` +
+          `answers, but 18-82 s instead of 1.7 s. Re-run this command to restore it.`
+      );
+    }
+  });
 }
 
 // --- 4. Band loop ---
@@ -484,16 +645,34 @@ const manifest: Manifest = {
     archive: { ...RANGES.archive, nDays: dayCount(RANGES.archive.start, RANGES.archive.end) },
     current: { ...RANGES.current, nDays: dayCount(RANGES.current.start, RANGES.current.end) },
   },
-  vars: varMeta,
+  // A --vars run must not delete the variables it did not touch from the
+  // manifest: the reader iterates this list, so a dropped entry silently
+  // removes that variable from every lookup while its chunks sit there intact.
+  vars: { ...(existing?.vars ?? {}), ...varMeta },
 };
 
-meta.push({
-  key: MANIFEST_KEY,
-  body: json(manifest),
-  opts: { contentType: "application/json", cacheControl: META_CACHE },
-});
+/**
+ * A band-limited trial has only written part of the state, so publishing a
+ * manifest for it would advertise a store full of holes as complete. Local
+ * `--out` runs are exempt — nothing reads those.
+ */
+const partialRun = MAX_BANDS < Math.ceil(nLat / BAND_ROWS);
+if (partialRun && r2) {
+  console.log(
+    `\nSTOPPING SHORT OF THE MANIFEST: --bands ${MAX_BANDS} wrote only part of the grid.\n` +
+      `The chunks are uploaded, but the manifest is unchanged, so nothing serves them.\n` +
+      `Re-run without --bands to publish.` +
+      (needsBuildingFlag ? `\nNOTE: the archive is still switched off — re-run to restore it.` : "")
+  );
+} else {
+  meta.push({
+    key: MANIFEST_KEY,
+    body: json(manifest),
+    opts: { contentType: "application/json", cacheControl: META_CACHE },
+  });
 
-await flush(meta, "metadata");
+  await flush(meta, "metadata");
+}
 
 console.log(
   `\ndone in ${elapsed()}s — ${totalObjects + meta.length} objects, ` +

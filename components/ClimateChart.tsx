@@ -29,7 +29,7 @@ import { type GddConfig } from "@/lib/agro/gdd";
 import { convert, unitLabel, decimals, type Quantity, type UnitSystem } from "@/lib/agro/units";
 
 /**
- * The main view: one calendar year on the x-axis, the 25-year normal drawn as a
+ * The main view: one calendar year on the x-axis, the 30-year normal drawn as a
  * distribution band behind it, and any years you pick drawn on top.
  *
  * Design decisions that matter agronomically:

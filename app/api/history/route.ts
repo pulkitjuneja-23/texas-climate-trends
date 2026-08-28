@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSource, DEFAULT_SOURCE_ID, listSources } from "@/lib/sources/registry";
+import { HISTORY_START_YEAR } from "@/lib/sources/defaults";
 import {
   findNearestStation,
   fetchStationDaily,
@@ -74,7 +75,7 @@ export async function GET(req: Request) {
 
     const today = todayISO();
     const currentYear = Number(today.slice(0, 4));
-    const startYear = Number(url.searchParams.get("startYear") ?? 2000);
+    const startYear = Number(url.searchParams.get("startYear") ?? HISTORY_START_YEAR);
     const endYear = Number(url.searchParams.get("endYear") ?? currentYear);
 
     if (!Number.isFinite(startYear) || !Number.isFinite(endYear) || startYear > endYear) {

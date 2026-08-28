@@ -5,7 +5,7 @@ import "leaflet/dist/leaflet.css";
 export const metadata: Metadata = {
   title: "Texas Climate Trends",
   description:
-    "25 years of weather history for any point in Texas — normals, individual years, forecast, and analog-year matching. Built for growers.",
+    "30 years of weather history for any point in Texas — normals, individual years, forecast, and analog-year matching. Built for growers.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

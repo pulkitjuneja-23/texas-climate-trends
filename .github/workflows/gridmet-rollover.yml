@@ -1,0 +1,88 @@
+# Seal the finished year into the archive, once a year.
+#
+# WHY THIS EXISTS AT ALL. The store is split in two: `archive` holds the settled
+# years and is never touched, `current` is rewritten daily. When a year ends it
+# has to move from one to the other, or it falls out of both and simply
+# disappears from the record.
+#
+# WHY FEBRUARY AND NOT 1 JANUARY. gridMET's recent days are provisional and get
+# revised. The daily refresh re-downloads the whole current part every time, so
+# any day still in that part keeps picking up Idaho's corrections. Sealing 31
+# December into the archive on 1 January would freeze the single least settled
+# month in the whole record and lose every later revision to it, silently.
+# Waiting a month costs nothing but slightly larger current-part chunks through
+# January, and the boundary logic lives in ARCHIVE_ROLLOVER_MONTH so the script
+# refuses to seal a year early even if this workflow is triggered by hand.
+#
+# COST: a full rebuild is ~22,200 uploads — about 2% of one month's free
+# allowance — and takes roughly 25 minutes.
+#
+# WHILE IT RUNS the site falls back to Earth Engine. The script raises a
+# `building` flag on the manifest before it overwrites anything, because a
+# rebuild changes how many days each part holds, and a reader trusting the old
+# manifest against the new chunks would produce a complete, plausible, wrong
+# series. Slow for 25 minutes once a year is the right trade.
+#
+# IF IT FAILS PART-WAY the flag stays up and the site stays on the slow path
+# until this is re-run. That is deliberate — the failure mode is "slow", never
+# "wrong" — but it does mean a failed run needs attention rather than waiting
+# for next year. GitHub emails the repository owner when a scheduled job fails.
+
+name: Roll the finished year into the archive (yearly)
+
+on:
+  schedule:
+    # 03:30 UTC on 2 February. A month after the year ends, so December has had
+    # its revisions, and on the 2nd rather than the 1st to stay clear of any
+    # month-boundary oddity in Idaho's own aggregation.
+    - cron: "30 3 2 2 *"
+  workflow_dispatch:
+
+# Shares a lock with the daily refresh: the two must never write at once.
+concurrency:
+  group: gridmet-archive
+  cancel-in-progress: false
+
+jobs:
+  rollover:
+    runs-on: ubuntu-latest
+    # ~25 minutes measured. Generous headroom because a half-finished rebuild
+    # leaves the archive switched off, so timing out mid-run is expensive.
+    timeout-minutes: 180
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Rebuild both parts
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: node --experimental-strip-types scripts/ingest-gridmet.mts --r2
+
+      # A rebuild that "succeeded" but left the flag up, or that published a
+      # boundary in the wrong place, would otherwise be invisible until someone
+      # noticed the site was slow. Check the published manifest says what it
+      # should before calling this a success.
+      - name: Verify the published manifest
+        env:
+          R2_PUBLIC_URL: ${{ secrets.NEXT_PUBLIC_R2_URL }}
+        run: |
+          node -e '
+            const base = process.env.R2_PUBLIC_URL.replace(/\/+$/, "");
+            const res = await fetch(base + "/gridmet/manifest.json", { cache: "no-store" });
+            if (!res.ok) throw new Error("manifest unreadable: " + res.status);
+            const m = await res.json();
+            if (m.building) throw new Error("manifest still flagged building — the archive is switched off");
+            const gap = Date.parse(m.parts.current.start) - Date.parse(m.parts.archive.end);
+            if (gap !== 86400000) throw new Error(
+              "the parts are not contiguous: archive ends " + m.parts.archive.end +
+              ", current starts " + m.parts.current.start);
+            console.log("archive " + m.parts.archive.start + " -> " + m.parts.archive.end +
+              " (" + m.parts.archive.nDays + " days), current -> " + m.parts.current.end);
+          ' --input-type=module

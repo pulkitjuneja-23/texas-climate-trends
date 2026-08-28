@@ -2,13 +2,18 @@
   "name": "texas-climate-trends",
   "version": "0.1.0",
   "private": true,
-  "description": "Farmer-facing historical climate trends for Texas — 25-year normals, individual years, forecast, and analog-year matching.",
+  "description": "Farmer-facing historical climate trends for Texas — 30-year normals, individual years, forecast, and analog-year matching.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "archive:refresh": "node --experimental-strip-types scripts/ingest-gridmet.mts --r2 --part current",
+    "archive:rebuild": "node --experimental-strip-types scripts/ingest-gridmet.mts --r2"
+  },
+  "engines": {
+    "node": ">=22.6"
   },
   "dependencies": {
     "@google/earthengine": "^1.7.40",

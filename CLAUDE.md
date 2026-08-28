@@ -8,7 +8,7 @@ Working context for this repo. **Read this first in a new session.** Update the
 ## The goal
 
 A **farmer-usable** website (mobile app later) showing what consumer weather apps leave out:
-**historical weather trends** for a specific point in Texas. 25 years of history (2000–present),
+**historical weather trends** for a specific point in Texas. 30 years of history (1996–present),
 selectable individual years, a three-tier forecast, and analog-year matching.
 
 Origin: the user is an agronomist who builds crop models / decision support systems. A farmer told
@@ -276,7 +276,7 @@ Use these to spot a regression fast:
 
 | Check | Expected |
 |---|---|
-| Rows, 2000→now | ~9,728 across 27 years, **zero** values < −100 |
+| Rows, 1996→now | ~11,197 across 31 years, **zero** values < −100 |
 | Annual rainfall normal | ~929 mm / **36.6 in** (published Waco normal ≈ 36 in) |
 | Rainfall trend, 25 yr | ≈ −31.75 mm/decade, **r² ≈ 0.013** (i.e. noise) |
 | Feb 29 sample size | n ≈ 371 (±7-day window keeps it from starving) |
@@ -889,20 +889,152 @@ independently measured gridMET row in the table above to within 0.05 in every ye
 is consistent with the source-disagreement table showing gridMET ~15% wetter than POWER
 there. Always state which source a sanity value belongs to.
 
+### 2026-08-27 (later) — Record extended to 1996; the archive now refreshes itself
+
+Two user decisions drove this: **start the record at 1996** (so 1996-2025 is exactly thirty
+complete years) and **schedule the archive refresh**, with the annual rollover held back a month
+rather than firing on 1 January.
+
+#### 1996, not 2000
+
+`HISTORY_START_YEAR` lives in `lib/sources/defaults.ts` — the client-safe file, alongside
+`DEFAULT_SOURCE_ID`, for the same bundling reason. The page, `/api/history` and `/api/et` all read
+it; nothing hardcodes a start year any more. The trend window gained a **30 yr** option and
+defaults to it.
+
+- **The R2 archive already held 1995**, so this cost nothing upstream — the four new years came
+  straight from it. Measured at the default location: 11,197 rows, 31 years, 6.9 s cold with
+  27 years already cached.
+- **1995 is deliberately left in the archive.** One spare year is ~45 MB of a 10 GB allowance and
+  means the window can move back a year without a 25-minute rebuild.
+- It is **not** the WMO 1991-2020 normal period, and every user-facing surface now says so rather
+  than implying an official normal.
+- `historyYears(currentYear)` is a FUNCTION, not a constant. Computing it from `new Date()` at
+  module scope evaluates separately on server and client, and around the new year those disagree —
+  the same hydration trap the URL parameters hit on 2026-08-24.
+
+#### The scheduled jobs (`.github/workflows/`)
+
+| Job | Cron | Command | Cost |
+|---|---|---|---|
+| `gridmet-refresh` | daily 09:20 UTC | `--r2 --part current` | 1,371 uploads, **85 s measured** |
+| `gridmet-rollover` | 2 Feb | `--r2` (both parts) | ~22,200 uploads, ~25 min |
+
+**~41,700 uploads/month against Cloudflare's free 1,000,000 — 4%.** Storage does not grow; every
+object is overwritten in place. Needs five GitHub secrets (the four `R2_*` plus
+`NEXT_PUBLIC_R2_URL` for the rollover's verify step). Plain-language setup is in
+`readme_for_user/SETUP-AUTOMATION.md`.
+
+**The daily job re-downloads the WHOLE current part rather than appending a day.** gridMET revises
+its recent days; an append-only refresh would keep the first, provisional version of every day
+forever.
+
+**GitHub disables scheduled workflows after 60 days with no commits.** If the data goes stale, check
+that before suspecting the code.
+
+#### THE YEAR-BOUNDARY LANDMINE — found before it shipped, would have been silent
+
+`--part current` rewrote the manifest with **both** parts' ranges recomputed from `thisYear`. Today
+that is harmless. On the first run of 2027 it would have written *"archive covers 1995-2026"* into
+the manifest while the archive chunks still held 1995-2025 — and `readArchivePoint` takes its
+slicing offsets straight from the manifest's `nDays`. Every date in the record would have shifted,
+returning a complete, plausible, entirely wrong series with no error anywhere.
+
+**A partial run must never invent the ranges of the parts it did not write.** The ingest now reads
+the existing manifest back (new `getObject` in `r2.ts`, a signed GET so it needs only the four
+credentials it already has) and preserves them. Same rule applied to `vars`: a `--vars` run merges
+rather than replaces, because the reader iterates that list and a dropped entry would silently
+remove a variable from every lookup while its chunks sat there intact.
+
+#### The rollover waits a month — `ARCHIVE_ROLLOVER_MONTH`
+
+`settledThroughYear(today)` in `layout.ts` returns `year - 1` from February onward, `year - 2`
+before it. So a year is only sealed into the never-rewritten archive once it has had a month of
+Idaho's revisions. Sealing 31 December on 1 January would freeze the least settled month in the
+record and lose every later correction to it, silently.
+
+**The current part is therefore allowed to span more than one calendar year**, and does through
+January (~13 months, chunks ~70% bigger for a few weeks). `current.start` is now derived as
+`archive.end + 1 day`, so the two parts are contiguous **by construction** and a year can never fall
+between them. Nothing downstream needed changing: every reader already works from the manifest's
+actual `start`/`nDays` rather than assuming a part is one year long.
+
+#### `building: true` — the flag that stops a mid-rebuild misread
+
+Writing the manifest LAST protects a FIRST build; it does nothing for a REBUILD, where a valid
+manifest is already live and describing chunks being overwritten underneath it — and where the
+rollover changes each part's `nDays`, so offsets go *wrong* rather than merely stale. A rebuild now
+raises `building` before touching a chunk and clears it by publishing the real manifest at the end.
+`getManifest()` returns null while it is up, so the site falls back to Earth Engine for ~25 minutes
+once a year. **Slow, never wrong.** Re-checked after 60 s rather than the usual 10 min so the fast
+path returns promptly.
+
+Two guards around it: a failed rebuild prints what to run (the flag stays up, and a permanently slow
+site is otherwise invisible), and a **current-only refresh refuses to run while the flag is set** —
+it ends by publishing a clean manifest, which would turn a half-rewritten archive back on.
+
+#### Also
+
+- **Skip-if-unchanged.** Idaho's feed stalls for days; the job compares the manifest against the
+  dataset's latest date and exits 0 with zero uploads. Verified: it correctly skipped at
+  `latest = 2026-08-26`. A green tick and a 20-second run is the job working, not skipping.
+- **`scripts/verify-current.mts`** (new) checks the part the daily job actually writes.
+  `verify-archive.mts` compares 2024, which lives in the archive part and the refresh never
+  touches — so it could not have caught a regression in the refresh at all.
+
+  **Run after the forced refresh: 944 values at Waco, 934 identical.** Ten differ by more than one
+  packing step, of which **one is material** — 2026-01-01 `tmmx`, the already-documented Earth
+  Engine year-boundary artifact where the archive matches Idaho and EE is the outlier. The other
+  nine are 0.2-0.6 mm precipitation revisions, which is Idaho revising provisional days that Earth
+  Engine's copy has not picked up. **The archive is the fresher of the two, by design.**
+
+  **Two tolerance traps this exposed, worth remembering for any future comparison:**
+  1. **Half a packing step is the WRONG tolerance.** Both sides store at 0.1 and pack
+     independently, so a 0.1 difference is a rounding tie in the last digit. At 0.051 it flagged
+     30 ties out of 944 and buried the four differences that meant something. One full step.
+  2. **A check that compares nothing must not pass.** The first version looked up bands directly
+     on the row when `getRegionSeries` nests them under `.values`, so every lookup returned
+     undefined, every variable reported "0 days compared", and it exited 0 — a green tick proving
+     nothing. It now exits 2 on a zero comparison count. **A sample size is part of a result, not
+     a detail.**
+- **`--bands N` no longer publishes a manifest to R2** — a band-limited trial would have advertised
+  a store full of holes as complete.
+- **`tsconfig.json` was not typechecking any `.mts` file** — `"**/*.ts"` does not match `.mts`, so
+  every script in `scripts/`, including the ingest that writes the archive, was outside
+  `npm run typecheck`. Added `"**/*.mts"` plus `allowImportingTsExtensions` (safe only because
+  `noEmit` is set; the scripts import each other with explicit `.ts` extensions because Node's type
+  stripping runs them with no bundler to resolve extensionless paths).
+
 ## Next up
 
-Roughly in value order:
+Items 1, 4 and 7 of the original list are done (gridMET as a source, OpenET, shipped to Vercel).
+What remains, roughly in value order:
 
-1. **gridMET or PRISM (4 km) as a source** — biggest accuracy win. NASA POWER's ~55 km cell cannot
-   separate one field from the next, and Texas rain is convective and patchy. The adapter layer means
-   this is one new file.
-2. **Ensemble source** — mean across sources with spread as an uncertainty band. Nothing in the
-   farmer-facing space does this; it is the strongest differentiator. Needs ≥3 live sources.
-3. Planting-date / crop-stage overlays on the season tracker.
-4. OpenET evapotranspiration integration.
-5. Freeze/frost date drift — first/last frost by year with trend.
-6. React Native / Expo app sharing `lib/` unchanged.
-7. Ship: install git, push, import to Vercel.
+1. **Ensemble source** — mean across sources with spread as an uncertainty band. Nothing in the
+   farmer-facing space does this; it is the strongest differentiator. Needs a real weighting design,
+   not a mean of whatever happens to be live.
+2. **PRISM** — parked by the user on 2026-08-27, not abandoned. The public service only serves
+   whole-CONUS daily rasters (~36,000 downloads for one 25-year point series), so it needs the same
+   ingest-and-transpose treatment gridMET just got. Probe scripts already exist in `scripts/`.
+3. React Native / Expo app sharing `lib/` unchanged.
+
+### Parked, to be designed with the user (raised 2026-08-27)
+
+Both were deferred deliberately — the user wants to discuss the agronomy before either is built.
+Do not implement either without that conversation.
+
+- **Freeze / frost date drift.** First and last frost date per year, with the trend. The decision
+  metric a grower actually plans a planting window around, and the one thing a 30-year record is
+  genuinely long enough to say something about — unlike a rainfall slope. Design questions that
+  must be settled first: which threshold counts as a frost (0 °C, −2 °C, and a hard-freeze −4 °C
+  are all in normal use and give different answers), whether the "year" runs Jan–Dec or
+  July–June (a Dec frost and the following Feb frost belong to one season, not two), and how to
+  report a year that never froze at all — which happens in the Valley and must not be drawn as
+  a zero.
+- **Planting-date / crop-stage overlays** on the season tracker. Mark planting, emergence and
+  growth stages so GDD and rainfall accumulation read against the crop calendar instead of against
+  1 January. Blocked on the open question below — the stage thresholds are crop-specific, so this
+  cannot be built generically without picking crops first.
 
 ### Open questions for the user
 - Which crops/planting windows matter most for the Texas rollout? (drives #3)

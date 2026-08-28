@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DailyRecord, Place, SourceMeta, TaggedRecord } from "@/lib/types";
 // From `defaults`, never `registry`: registry pulls in every source module,
 // and the Earth Engine ones use Node APIs that cannot be bundled for a browser.
-import { DEFAULT_SOURCE_ID } from "@/lib/sources/defaults";
+import { DEFAULT_SOURCE_ID, HISTORY_START_YEAR, historyYears } from "@/lib/sources/defaults";
 import { DEFAULT_PLACE } from "@/lib/geo";
 import { GDD_PRESETS } from "@/lib/agro/gdd";
 import {
@@ -27,7 +27,7 @@ import AnnualTrendChart from "@/components/AnnualTrendChart";
 import AnalogPanel from "@/components/AnalogPanel";
 import ForecastStrip, { type ForecastPayload } from "@/components/ForecastStrip";
 
-const START_YEAR = 2000;
+const START_YEAR = HISTORY_START_YEAR;
 
 interface StationRef {
   id: string;
@@ -375,7 +375,7 @@ export default function Page() {
        * An accumulation sums only the days that reported. Airport stations drop
        * days routinely: measured 2026 at Muleshoe 173/237 days, Pecos 23/237.
        * Summing those gives 1.81 in and 4.5 in, which then get compared against
-       * a COMPLETE 25-year normal and render as "-13.2 vs normal" — a fake
+       * a COMPLETE 30-year normal and render as "-13.2 vs normal" — a fake
        * catastrophic drought, stated with total confidence.
        *
        * The total itself is honest (it is what the station measured); the
@@ -516,7 +516,7 @@ export default function Page() {
         <div className="topbar-inner">
           <div className="brand">
             <h1>Texas Climate Trends</h1>
-            <small>25 years of weather history for your field</small>
+            <small>{historyYears(currentYear)} years of weather history for your field</small>
           </div>
 
           {/* Source lives in the sticky bar so it can be changed from anywhere

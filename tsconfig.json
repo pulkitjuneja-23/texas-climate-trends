@@ -13,11 +13,18 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
+    // The .mts scripts import each other with explicit ".ts" extensions,
+    // because Node's type stripping runs them directly with no bundler to
+    // resolve extensionless paths. Safe here only because noEmit is set.
+    "allowImportingTsExtensions": true,
     "plugins": [{ "name": "next" }],
     "paths": {
       "@/*": ["./*"]
     }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  // "**/*.mts" is listed separately: "**/*.ts" does NOT match it, so every
+  // script in scripts/ was silently outside the typecheck — including the
+  // ingest that writes the archive.
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.mts", "**/*.tsx", ".next/types/**/*.ts"],
   "exclude": ["node_modules"]
 }

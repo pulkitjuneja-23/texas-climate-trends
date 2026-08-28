@@ -8,6 +8,7 @@ import {
 import { fetchReferenceEt, type DailyEto } from "@/lib/sources/gridmet";
 import { readMany, writeMany, cacheEnabled, type PutEntry } from "@/lib/cache/store";
 import { validateLatLon } from "@/lib/geo";
+import { HISTORY_START_YEAR } from "@/lib/sources/defaults";
 
 /**
  * Both water layers are Earth Engine calls, so both are cached.
@@ -73,8 +74,8 @@ export async function GET(req: Request) {
         : DEFAULT_BUFFER_M;
 
     const today = new Date().toISOString().slice(0, 10);
-    const startYear = Number(url.searchParams.get("startYear") ?? 2000);
-    const refStart = `${Number.isFinite(startYear) ? startYear : 2000}-01-01`;
+    const startYear = Number(url.searchParams.get("startYear") ?? HISTORY_START_YEAR);
+    const refStart = `${Number.isFinite(startYear) ? startYear : HISTORY_START_YEAR}-01-01`;
 
     /**
      * Reference ET is opt-in.

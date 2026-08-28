@@ -22,8 +22,8 @@
  * chunk daily would be ~600,000 uploads a month against a 1,000,000 free
  * allowance — for one variable. So time is cut in two:
  *
- *   archive/   1995 -> end of last year   written once a year, never touched
- *   current/   1 Jan this year -> now     rewritten on each refresh
+ *   archive/   1995 -> a settled year end   written once a year, never touched
+ *   current/   the day after that -> now   rewritten on each refresh
  *
  * A refresh then rewrites only the small current-year chunks. Measured shapes:
  *
@@ -32,6 +32,12 @@
  *
  * A point lookup fetches one chunk per part per variable: 4 variables x 2 parts
  * = 8 requests, roughly 600 KB.
+ *
+ * NOTE THE WORDING: the split is "a settled year end", not "31 December last
+ * year". The current part is allowed to span more than one calendar year, and
+ * routinely does for the first weeks of January — see ARCHIVE_ROLLOVER_MONTH.
+ * Nothing downstream cares, because every reader works from the manifest's
+ * actual start/nDays rather than assuming a part is one year long.
  *
  * ---------------------------------------------------------------------------
  * WHY 4x4 AND NOT 1x1
@@ -69,6 +75,37 @@ export const PART_CHUNK_PX: Record<Part, number> = {
 
 /** gridMET's native grid step, degrees. */
 export const GRID_STEP = 1 / 24;
+
+/**
+ * The month in which a finished year is allowed to move into the archive.
+ *
+ * NOT January. gridMET's recent days are provisional and get revised — the
+ * whole reason the current part is re-downloaded from scratch every day rather
+ * than appended to. Sealing 31 December into the archive on 1 January would
+ * freeze the least settled data in the record into the part that is never
+ * rewritten, and the revision would be lost silently.
+ *
+ * February means the previous year gets a month of revisions before it is
+ * finalised, and it stays in the daily-refreshed current part until then. The
+ * cost is that the current part spans ~13 months through January, which makes
+ * its chunks about 70% bigger for those few weeks. That is a much better trade
+ * than a permanently wrong December.
+ */
+export const ARCHIVE_ROLLOVER_MONTH = 2;
+
+/**
+ * The last year whose data is settled enough to seal into the archive, given
+ * today's date. Everything after it belongs to the daily-refreshed part.
+ *
+ * On 2027-02-01 this is 2026. On 2027-01-15 it is still 2025 — so a rebuild
+ * that happens to run in January leaves 2026 in the current part, where the
+ * daily refresh keeps picking up Idaho's revisions to it.
+ */
+export function settledThroughYear(todayISO: string): number {
+  const year = Number(todayISO.slice(0, 4));
+  const month = Number(todayISO.slice(5, 7));
+  return month >= ARCHIVE_ROLLOVER_MONTH ? year - 1 : year - 2;
+}
 
 /**
  * Variables held in the archive.
@@ -110,6 +147,24 @@ export interface Manifest {
   /** Bumped when the on-disk arrangement changes incompatibly. */
   version: number;
   builtAt: string;
+  /**
+   * Set while a rebuild is part-way through writing chunks. Readers must treat
+   * the whole archive as absent until it clears.
+   *
+   * WHY THIS EXISTS. The manifest is written last, so a half-finished upload
+   * can never be *served* as complete — but that only protects a first build.
+   * A REBUILD overwrites chunks that the still-current manifest describes, and
+   * an annual rollover changes how many days each part holds. For the ~25
+   * minutes that rebuild runs, the manifest's nDays and the chunks on disk
+   * disagree, and a reader trusting the manifest would slice each chunk at the
+   * wrong offsets — producing a full, plausible, entirely wrong series with no
+   * error anywhere.
+   *
+   * So a rebuild raises this flag first and clears it by writing the real
+   * manifest at the end. The site falls back to Earth Engine while it is up:
+   * slow for a few minutes once a year, rather than wrong.
+   */
+  building?: boolean;
   /** Northernmost row centre, and westernmost column centre. */
   lat0: number;
   lon0: number;

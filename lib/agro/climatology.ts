@@ -31,7 +31,7 @@ export const KEY_INDEX: Map<string, number> = new Map(DOY_KEYS.map((k, i) => [k,
 /**
  * `et` and `balance` only exist from late 2015 onward. Everything downstream
  * treats a missing value as "no data", never as zero, so their lines simply
- * begin partway along the same 2000-2025 axis as the rest.
+ * begin partway along the same 1996-2025 axis as the rest.
  */
 export type Field =
   | "tmax"

@@ -3,18 +3,18 @@
  *
  * WHY YEARS AND NOT WHOLE RANGES
  * The obvious key is (source, cell, start..end), but it caches badly: a visitor
- * asking 2000-2026 and one asking 2010-2026 share nothing, and tomorrow's
- * request for 2000-2026 misses because `end` moved by a day. Almost every entry
+ * asking 1996-2026 and one asking 2010-2026 share nothing, and tomorrow's
+ * request for 1996-2026 misses because `end` moved by a day. Almost every entry
  * would be written once and read never.
  *
  * Years fix that, because of one fact about this data: **a completed past year
  * never changes.** 2019 at a given gridMET cell is the same 365 rows forever.
- * So 26 of the 27 years in a 25-year request are permanently cacheable, and
+ * So 30 of the 31 years in a 30-year request are permanently cacheable, and
  * only the current one needs refreshing.
  *
  * That turns the expensive case into a cheap one. A revisit to a known cell
  * whose current year has gone stale re-fetches ONE year — measured at ~2 s
- * against ~22-82 s for the full record — and reads the other 26 from Postgres.
+ * against ~22-82 s for the full record — and reads the other 30 from Postgres.
  */
 
 import type { DailyRecord } from "@/lib/types";

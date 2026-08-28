@@ -98,7 +98,7 @@ Switch to gridMET or Daymet to fill those gaps. Stations near big airports (Waco
 are usually complete; remote parts of west Texas are patchier.
 
 **Why PRISM isn't listed:** PRISM only publishes maps of the whole United States, one day at a time.
-Getting 25 years for your field alone would mean about 36,000 downloads. gridMET is the practical
+Getting 30 years for your field alone would mean about 43,000 downloads. gridMET is the practical
 substitute — same 4 km detail, and it's *built from* PRISM.
 
 **Why Open-Meteo isn't listed:** still used behind the scenes for the days 8–16 forecast, but
@@ -133,7 +133,7 @@ Two things to read carefully here:
 
 **4. Season tracker** — the big chart
 One year, January to December, left to right.
-- The **grey bands** are what the last 25 years did. Darker inner band = the middle half of years.
+- The **grey bands** are what the last 30 years did. Darker inner band = the middle half of years.
   Lighter outer band = the middle 80%.
 - The **dashed grey line** is the average.
 - The **blue line** is this year.
@@ -144,7 +144,7 @@ You can add up to 4 past years on top using the year buttons.
 **4b. Water — three new options in the Variable dropdown**
 
 - **Water demand (reference ET)** — works now, no setup. How much water a standard crop would have
-  needed. Covers all 25 years, only 3 days behind.
+  needed. Covers all 30 years, only 3 days behind.
 - **Water used (ET)** — what the field *actually* used, measured from satellite at 30 m. Only goes
   back to **late 2015**, so on the chart its line simply starts partway across — the earlier years
   are blank, not zero.
@@ -209,8 +209,8 @@ decade and the long-term average sit at the top right.
 When the trend line isn't worth trusting, the text under the title says so in plain words —
 "the swing between years is far bigger than the long-term drift, so read the bars, not the line."
 Take that seriously. For Waco rainfall, gridMET says the trend is **going up** 2.17 in per decade
-while NASA POWER says it's **going down** 1.25 in per decade. Same field, opposite answer. Over
-25 years the year-to-year noise simply swamps any real drift.
+while NASA POWER says it's **going down** 1.25 in per decade. Same field, opposite answer. Even
+over 30 years the year-to-year noise can swamp any real drift.
 
 ---
 
@@ -219,8 +219,9 @@ while NASA POWER says it's **going down** 1.25 in per decade. Same field, opposi
 - **Even the best grid here is 1–4 km, and the sources disagree by up to 30% on rainfall.** Treat
   any single number as an estimate. The airport station is the only real measurement, but it is one
   point — a station 30 miles away easily misses a thunderstorm that hit your field.
-- **The "normal" here is 2000–2025 from a computer model**, not the official National Weather
-  Service station normals. It won't match a NWS climate report exactly.
+- **The "normal" here is 1996–2025 from a computer model**, not the official National Weather
+  Service station normals. That is thirty complete years, the usual length for a normal, but the
+  Weather Service uses 1991–2020 — so it won't match a NWS climate report exactly.
 - **Similar years are not a forecast.** They are history, shown as a range.
 - **Nothing here has been checked against a real rain gauge on a real farm.** It should not be the
   only thing behind an irrigation or planting decision.

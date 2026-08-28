@@ -1,0 +1,66 @@
+# Keep the gridMET archive current.
+#
+# Re-downloads this season's data from the University of Idaho every morning and
+# rewrites the "current" part of the Zarr store on R2. Without this the site's
+# fast path would slowly fall behind and every recent day would come from the
+# airport-station top-up instead.
+#
+# COST, measured against the live store (260 x 320 cells, 16x16 chunks):
+#   1,360 chunks + 11 metadata objects = 1,371 uploads per run
+#   ~41,700 uploads/month against Cloudflare's free 1,000,000 = about 4%
+# Storage does not grow: every object is overwritten in place.
+#
+# The job exits without uploading anything at all when Idaho's feed has not
+# advanced since the last run, which is common — it stalls for days at a time.
+#
+# NOTE: GitHub disables scheduled workflows in a repository after 60 days with
+# no commits, and emails the owner when it does. If the refresh silently stops,
+# check that first — it is far more likely than a code fault.
+
+name: Refresh gridMET (daily)
+
+on:
+  schedule:
+    # 09:20 UTC — early morning in Texas, and a few hours after Idaho's own
+    # daily update lands. Deliberately not on the hour: GitHub queues the
+    # enormous number of jobs scheduled at :00, which can delay them by an hour.
+    - cron: "20 9 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Re-upload even if nothing new is available upstream"
+        type: boolean
+        default: false
+
+# Never let two refreshes write the store at once.
+concurrency:
+  group: gridmet-archive
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    # Measured at 85 seconds for a full 238-day refresh, and about 20 for a run
+    # that finds nothing new. This is a runaway guard, not a target.
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 24 for two reasons: built-in zstd (zlib.zstdCompressSync), which is
+      # why the archive code needs no compression dependency, and type stripping
+      # so the .mts script runs without a build step.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Refresh the current part
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          node --experimental-strip-types scripts/ingest-gridmet.mts \
+            --r2 --part current \
+            ${{ inputs.force && '--force' || '' }}

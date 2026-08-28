@@ -58,22 +58,24 @@ export interface PutOptions {
 }
 
 /**
- * PUT one object. Returns nothing on success and throws with the server's own
- * message on failure — R2's XML errors are specific and worth surfacing.
+ * Sign and send one request. Shared by PUT and GET so there is exactly one
+ * implementation of the signing sequence — two would drift, and a signature bug
+ * surfaces as an opaque 403 rather than as anything that names the cause.
  */
-export async function putObject(
+async function signedRequest(
   cfg: R2Config,
+  method: "PUT" | "GET",
   key: string,
-  body: Buffer,
+  body: Buffer | null,
   opts: PutOptions = {}
-): Promise<void> {
+): Promise<Response> {
   const host = `${cfg.accountId}.r2.cloudflarestorage.com`;
   const canonicalUri = `/${cfg.bucket}/${encodeKey(key)}`;
 
   const now = new Date();
   const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, ""); // YYYYMMDDTHHMMSSZ
   const dateStamp = amzDate.slice(0, 8);
-  const payloadHash = sha256hex(body);
+  const payloadHash = sha256hex(body ?? Buffer.alloc(0));
 
   // Header names must be lower-case and sorted; values trimmed.
   const headers: Record<string, string> = {
@@ -89,7 +91,7 @@ export async function putObject(
   const signedHeaders = sortedNames.join(";");
 
   const canonicalRequest = [
-    "PUT",
+    method,
     canonicalUri,
     "", // no query string
     canonicalHeaders,
@@ -115,18 +117,53 @@ export async function putObject(
     `AWS4-HMAC-SHA256 Credential=${cfg.accessKeyId}/${scope}, ` +
     `SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
-  const res = await fetch(`https://${host}${canonicalUri}`, {
-    method: "PUT",
+  return fetch(`https://${host}${canonicalUri}`, {
+    method,
     headers: { ...headers, Authorization: authorization },
-    body: new Uint8Array(body),
+    body: body ? new Uint8Array(body) : undefined,
   });
+}
 
+/**
+ * PUT one object. Returns nothing on success and throws with the server's own
+ * message on failure — R2's XML errors are specific and worth surfacing.
+ */
+export async function putObject(
+  cfg: R2Config,
+  key: string,
+  body: Buffer,
+  opts: PutOptions = {}
+): Promise<void> {
+  const res = await signedRequest(cfg, "PUT", key, body, opts);
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
     throw new Error(
       `R2 PUT ${key} failed ${res.status}: ${detail.replace(/\s+/g, " ").slice(0, 300)}`
     );
   }
+}
+
+/**
+ * GET one object, or null if it is not there.
+ *
+ * The ingest needs this to read back the manifest it wrote on a previous run.
+ * A partial rebuild must not invent the date ranges of the parts it is not
+ * touching — see the rollover discussion in `ingest-gridmet.mts`.
+ *
+ * A signed GET rather than the public URL, so a scheduled run needs only the
+ * four R2 credentials it already has, and so it always sees the object itself
+ * rather than a CDN copy that may still be within its cache lifetime.
+ */
+export async function getObject(cfg: R2Config, key: string): Promise<Buffer | null> {
+  const res = await signedRequest(cfg, "GET", key, null);
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(
+      `R2 GET ${key} failed ${res.status}: ${detail.replace(/\s+/g, " ").slice(0, 300)}`
+    );
+  }
+  return Buffer.from(await res.arrayBuffer());
 }
 
 /**

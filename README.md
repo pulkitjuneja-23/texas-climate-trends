@@ -1,6 +1,6 @@
 # Texas Climate Trends
 
-A farmer-facing view of **25 years of weather history** for any point in Texas — the thing every
+A farmer-facing view of **30 years of weather history** for any point in Texas — the thing every
 consumer weather app leaves out. Normals, individual years, a three-tier forecast, and analog-year
 matching, all on one page.
 
@@ -30,7 +30,7 @@ npm run typecheck # tsc --noEmit
 ## What it does
 
 ### 1. Season tracker
-One calendar year on the x-axis with the 2000–2025 normal drawn behind it as a distribution band
+One calendar year on the x-axis with the 1996–2025 normal drawn behind it as a distribution band
 (middle 50% and middle 80% of years), and any years you pick drawn on top. Variables: daily high /
 low / mean temperature, rainfall, and growing degree days.
 
@@ -77,9 +77,10 @@ temperature") instead of a national map to squint at.
 
 ### 4. Year-by-year trend
 One bar per completed year, colored diverging around the period mean, with an OLS fit over a
-selectable 10/15/20/25-year window. **r² is always shown next to the slope.** A 25-year record is
-short for climate work, and Waco's rainfall trend is −31.75 mm/decade with an r² of 0.013 — that is
-noise, not a trend, and reporting the slope alone would invite exactly that misreading.
+selectable 10/15/20/25/30-year window, defaulting to the full 30. Where the fit is weak the chart
+says so in plain words instead of printing r². Even 30 years is short for climate work: Waco's
+rainfall trend is −31.75 mm/decade with an r² of 0.013 — noise, not a trend — and reporting the
+slope alone would invite exactly that misreading.
 
 ---
 
@@ -187,8 +188,9 @@ from Vercel's data cache rather than re-hitting NASA.
   and patchy. Fine for climate trends; it will not separate one field from the next. The map draws
   the actual grid cell so this is visible rather than assumed. Wiring up gridMET or PRISM is the
   highest-value next step.
-- **Normals are 2000–present at a grid point**, not the official NOAA 1991–2020 station normals.
-  They will not match a NWS climate report exactly.
+- **Normals are 1996–present at a grid point**, not the official NOAA 1991–2020 station normals.
+  1996 is chosen so that 1996–2025 is exactly thirty complete years, the conventional length for a
+  normal — but it is not the WMO period and will not match a NWS climate report exactly.
 - **Analog years are not a forecast.** They rank past seasons against the current one. Similar starts
   have frequently been followed by very different finishes — see the 2009-vs-2000 split above.
 - **Not validated against on-farm rain gauges.** Nothing here should be the only input to an

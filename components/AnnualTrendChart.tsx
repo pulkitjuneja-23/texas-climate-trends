@@ -28,13 +28,20 @@ import { BALANCE_LEGEND } from "@/lib/agro/water";
  * absolute total. The pole assignment follows the conventions growers already
  * read: warm = red for temperature, dry = red for rainfall.
  *
- * The trend line is ordinary least squares. r² is shown next to the slope
- * without ceremony: a 25-year record is short for climate, and a slope with an
- * r² of 0.04 should not be read as a trend. Reporting the slope alone would
- * invite exactly that mistake.
+ * The trend line is ordinary least squares. Where the fit is weak the subtitle
+ * says so in plain words rather than printing r²: a 30-year record is still
+ * short for climate, and a slope with an r² of 0.04 must not be read as a
+ * trend. Reporting the slope alone would invite exactly that mistake.
  */
 
-const TREND_WINDOWS = [10, 15, 20, 25];
+/**
+ * 30 is the full record (1996 onward) and the default, because the whole point
+ * of moving the start year back was to fit trends over a conventional
+ * thirty-year span. The shorter windows stay: a grower asking "what have the
+ * last ten years done" is asking a different and equally fair question.
+ */
+const TREND_WINDOWS = [10, 15, 20, 25, 30];
+const DEFAULT_TREND_WINDOW = 30;
 
 const AGGREGATES: Array<{
   field: Field;
@@ -89,7 +96,7 @@ export default function AnnualTrendChart({
   onFieldChange,
   waterLoading = false,
 }: Props) {
-  const [window, setWindow] = useState(25);
+  const [window, setWindow] = useState(DEFAULT_TREND_WINDOW);
   const [showTable, setShowTable] = useState(false);
 
   const def = AGGREGATES.find((a) => a.field === field) ?? AGGREGATES[0];
@@ -175,8 +182,8 @@ export default function AnnualTrendChart({
             </div>
             <div className="head-stat">
               {/* The actual number of bars, not the window setting. With a
-                  25-year window but only 9 years of satellite water data,
-                  "25-year average" would be plainly untrue. */}
+                  30-year window but only 9 years of satellite water data,
+                  "30-year average" would be plainly untrue. */}
               <span className="hk">{data.length}-year average</span>
               <span className="hv">
                 {mean.toFixed(dp)} {unit}
