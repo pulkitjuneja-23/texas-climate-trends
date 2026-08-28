@@ -1572,6 +1572,15 @@ choice is named — in the dropdown option and in the note — **only when it is
 the plain county-wide figure**. Writing "· all" on nine options in ten would be
 noise; naming the exception is what carries meaning.
 
+**Measured across the whole store rather than assumed:** of 1,035 crop series in
+223 Texas counties, **1,032 have an all-practices record at least as complete as
+either split** — which is structural, since a county that publishes a split
+publishes the combined figure too and the split is a subset. The three
+exceptions are real and are exactly why this is a function and not a hardcoded
+`"all"`: **Somervell County wheat has ONLY a dryland series** (one year, no
+all-acres figure at all) and **Washington County wheat has 4 all-acres years
+against 5 dryland**. Hardcoding would blank one and understate the other.
+
 Worth recording why this cannot be solved by asking the grower whether their
 field is irrigated: the constraint is what USDA published for their county, not
 what they do on their own acres.

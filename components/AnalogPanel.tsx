@@ -202,10 +202,17 @@ function headUnit(k: keyof AnalogFeatures, units: UnitSystem): string | null {
 /**
  * Which of a crop's practice series to actually use here.
  *
- * The one with the most reported years, which in most counties is "All
- * production practices" because it is the only one NASS published. Where a
- * county DOES break the split out and one side has the fuller record, that side
- * wins — a dryland series with twenty years beats an all-acres series with two.
+ * The one with the most reported years. MEASURED, not assumed: across all 223
+ * Texas counties in the store, 1,032 of 1,035 crop series have an all-practices
+ * record at least as complete as either split, which is what makes "all" the
+ * near-universal answer — a county that publishes a split publishes the
+ * combined figure too, and the split is a subset of it.
+ *
+ * The three exceptions are real and are why this is a function rather than a
+ * constant: Somervell County wheat has ONLY a dryland series (one year, no
+ * all-acres figure at all), and Washington County wheat has four all-acres
+ * years against five dryland. Hardcoding "all" would blank one and understate
+ * the other.
  */
 function bestPractice(
   crop: { practices: string[] } | null | undefined,
