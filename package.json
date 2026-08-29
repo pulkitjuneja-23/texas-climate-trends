@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@google/earthengine": "^1.7.40",
+    "@vercel/analytics": "^2.0.1",
     "fflate": "0.8.2",
     "leaflet": "1.9.4",
     "next": "14.2.15",

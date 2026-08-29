@@ -1718,6 +1718,70 @@ adding a false zero.
 - **Temple is the DEFAULT PIN**, so the default location was serving false zeros
   in its most recent days until this landed.
 
+### 2026-08-29 — Analytics: Vercel for traffic, our own table for locations
+
+User wanted to know whether anyone is using the site, what locations they look
+up, and how to not count themselves. Plain-language setup in
+`readme_for_user/SETUP-ANALYTICS.md`.
+
+**THE FACT THAT DECIDED THE DESIGN: custom events are Pro-only on Vercel.** The
+Hobby plan gives page views, visitors, referrers, devices and the VISITOR's
+city — but the one question worth answering, *which field did they look up*,
+needs a custom event, which Hobby does not have. Hobby also keeps only a
+**1-month rolling window**, so history is lost. Verified against the pricing
+table 2026-08-29; re-check before quoting.
+
+So: **Vercel for traffic, Supabase for locations.** The database was already
+there for the cache, so the answer Vercel charges $20/month for costs nothing,
+keeps forever, and stays out of a third party.
+
+#### `/api/visit` — its own route, and that is the important part
+
+**`/api/history` is CDN-cached for 3 hours, so a counter there would silently
+miss repeat interest** — a second visitor at the same field inside that window
+is served from the edge and the route function never runs. It would undercount
+the popular locations worst of all. `/api/visit` is `force-dynamic`,
+`no-store`, and does no upstream work: one point-in-polygon test against an
+index already in memory. Measured ~100 ms after the first call.
+
+**Always returns 204**, including on a bad body, an out-of-range point, or a
+database that is down. It is a fire-and-forget beacon from an already-rendered
+page; there is no failure here worth telling a browser about.
+
+**COUNTY ONLY — the user's call, and the right one.** A typed coordinate is
+someone's field. The server resolves it to a county and DISCARDS it; nothing
+finer is ever written. No IP, no user agent, no session id, no cookie. Two
+visits by one person are indistinguishable from two people, which is a real
+limitation and the price of not tracking anyone.
+
+Fires on **location change only**, not per page view — flipping source, variable
+or panel at one spot is one lookup, because it is.
+
+#### "Don't count me" — `lib/analytics/self.ts`
+
+`?notme=1` marks the browser in localStorage; Vercel's `beforeSend` returns null
+for it and the visit log records `self = true` rather than dropping the row —
+**kept on purpose, because seeing your own visits flagged is how you confirm the
+exclusion works.** `isSelf()` reads the URL as well as the stored flag: an
+effect would run too late, and the first event on the very page that sets the
+flag is exactly the one you are trying not to record.
+
+Honest limits, documented for the user: per browser and per device, cleared with
+site data, and never retroactive. `isRealVisit()` also excludes localhost and
+preview deployments so ordinary development pollutes nothing.
+
+#### Two numbers that will be misread if not stated
+
+- **Vercel "visitors" is unique PER DAY, not per person.** The identifier is a
+  hash of the request, discarded after 24 h — that is how it avoids cookies. One
+  grower on five days counts as five.
+- **The visit log counts LOOKUPS, not people.** One person moving the pin around
+  five fields in a county registers five.
+
+Verified: 14/14 counties resolved correctly and correctly null outside Texas;
+the flag sets, persists and clears; malformed bodies all return 204; localhost
+fires no beacon.
+
 ## Next up
 
 Items 1, 4 and 7 of the original list are done (gridMET as a source, OpenET, shipped to Vercel).

@@ -84,6 +84,28 @@ async function getStore(): Promise<YieldStore | null> {
 }
 
 /**
+ * Just which county a point is in — no yields.
+ *
+ * Split out for the visit log, which records the COUNTY someone looked at and
+ * nothing finer. It reuses the same cached boundary index, so asking this
+ * question costs one point-in-polygon test and no extra network call.
+ *
+ * Returns null outside Texas, same rule as below.
+ */
+export async function readCountyOnly(
+  lat: number,
+  lon: number
+): Promise<{ fips: string; name: string } | null> {
+  const index = await getCountyIndex();
+  if (!index) return null;
+  const county = locateCounty(index, lat, lon);
+  if (!county) return null;
+  // The store holds the tidier display names; fall back to the index's own.
+  const store = await getStore();
+  return { fips: county.fips, name: store?.countyNames[county.fips] ?? county.name };
+}
+
+/**
  * Everything known about one point's county.
  *
  * Returns null outside Texas rather than the nearest county: a field in New

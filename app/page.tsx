@@ -20,6 +20,7 @@ import {
 import { convert, unitLabel, type UnitSystem } from "@/lib/agro/units";
 import { monthlyEtToDaily, attachWaterFields, balanceWording } from "@/lib/agro/water";
 import { formatDate, formatRange } from "@/lib/format/date";
+import { isSelf, isRealVisit } from "@/lib/analytics/self";
 import type { MonthlyEt } from "@/lib/sources/openet";
 // The TYPE only — `lib/yield/read` touches process.env and must stay server-side.
 import type { CountyYields } from "@/lib/yield/types";
@@ -337,6 +338,48 @@ export default function Page() {
 
     return () => ctrl.abort();
   }, [place.lat, place.lon, urlReady, needsReference, refLoaded]);
+
+  /**
+   * ---- visit log ----
+   *
+   * One beacon per LOCATION, not per page view: it hangs off the coordinates
+   * alone, so changing source, variable or panel at the same spot does not fire
+   * it again. What we want to know is which fields people look at, and a reader
+   * who flips through four datasets at one farm looked at one farm.
+   *
+   * Deliberately NOT awaited and deliberately not tied to the data load — it
+   * must never delay or affect anything on screen. `keepalive` lets it survive
+   * the reader immediately navigating away, which is otherwise the most common
+   * way a first visit goes unrecorded.
+   *
+   * The server turns the coordinates into a county and throws them away; see
+   * lib/analytics/visits.ts.
+   */
+  useEffect(() => {
+    if (!urlReady) return;
+    if (!isRealVisit()) return;
+
+    const ctrl = new AbortController();
+    fetch("/api/visit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        lat: place.lat,
+        lon: place.lon,
+        source: sourceId,
+        self: isSelf(),
+      }),
+      keepalive: true,
+      signal: ctrl.signal,
+    }).catch(() => {
+      /* telemetry is never worth a visible failure */
+    });
+
+    return () => ctrl.abort();
+    // sourceId is read but intentionally NOT a dependency: it is recorded as
+    // context for the visit, not as a reason to record another one.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [place.lat, place.lon, urlReady]);
 
   /**
    * ---- county crop yields (NASS) ----
