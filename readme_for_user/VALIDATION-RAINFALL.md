@@ -98,10 +98,25 @@ the state map and gridMET say about 30. It is not a dry site — it is a gauge
 writing 0.00 every day instead of writing nothing, and counting days cannot see
 that. Half of the 32 stations checked failed one quality test or another.
 
-This matters beyond the hidden station source, because the **nearest station also
-fills the last few days behind gridMET**, so a dead gauge could add a few days of
-false zeros to any location. The exposure is small — a handful of days out of
-238 — but it is real and not yet guarded against.
+This mattered beyond the hidden station source, because the **nearest station
+also fills the last few days behind gridMET** — so a dead gauge was adding false
+zeros to the most recent rainfall at any location, including the default pin.
+
+**Now fixed.** Before using a station's rainfall, the site compares it against
+the gridded source over the four months where both have data. A gauge reading
+under a fifth of the grid over that long is not measuring, so its rainfall is
+dropped and the last few days simply show no rain figure rather than a wrong
+one. Its temperatures are kept — a seized rain gauge does not stop a
+thermometer.
+
+The cut-off sits in a real gap, measured across 30 sites:
+
+| Gauge vs grid | Site | |
+|---|---|---|
+| 0.11 | Paris | dropped |
+| 0.19 | Temple — **the default pin** | dropped |
+| 0.24 | Muleshoe | kept (its station is 60 km away in New Mexico — a different fault) |
+| 0.70 – 1.38 | the other 25 sites | kept |
 
 ---
 

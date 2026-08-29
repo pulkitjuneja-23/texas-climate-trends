@@ -1,4 +1,9 @@
-# Texas Climate Trends
+# TWIRE — Texas Weather and Irrigation Resource Explorer
+
+> Renamed from "Texas Climate Trends" on 28 Aug 2026. The **name** changed; the
+> deployment URL, the repository slug, the Google Cloud project id and the
+> Supabase project name did not — those are identifiers other systems resolve,
+> and renaming them would break live links and credentials for no gain.
 
 A farmer-facing view of **30 years of weather history** for any point in Texas — the thing every
 consumer weather app leaves out. Normals, individual years, a three-tier forecast, and analog-year

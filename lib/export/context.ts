@@ -35,7 +35,14 @@ export function today(): string {
 
 /** The `#` comment block at the top of every CSV. */
 export function csvHeader(ctx: ExportContext | undefined, extra: string[] = []): string[] {
-  const lines = ["Texas Climate Trends — https://texas-climate-trends.vercel.app"];
+  /*
+    The NAME changed to TWIRE; the URL did not. The deployment is still
+    texas-climate-trends.vercel.app, and printing anything else in an exported
+    file would send the reader to a page that does not exist.
+  */
+  const lines = [
+    "TWIRE — Texas Weather and Irrigation Resource Explorer — https://texas-climate-trends.vercel.app",
+  ];
   if (!ctx) return [...lines, ...extra, `Exported: ${today()}`];
 
   if (ctx.placeName) lines.push(`Location: ${ctx.placeName}`);
@@ -58,7 +65,9 @@ export function figureFooter(ctx: ExportContext | undefined, extra?: string): st
   if (ctx?.readAt) bits.push(`${ctx.readAt.lat.toFixed(3)}, ${ctx.readAt.lon.toFixed(3)}`);
   else if (ctx) bits.push(`${ctx.lat.toFixed(3)}, ${ctx.lon.toFixed(3)}`);
   if (extra) bits.push(extra);
-  bits.push("Texas Climate Trends");
+  // The short form under a figure — a printed caption has no room for the
+  // expansion, and the CSV block above carries the full name and the URL.
+  bits.push("TWIRE");
   /*
     The readable form, not ISO. This line is printed under a picture that ends
     up in a slide or a report, where it is read by a person — and the site's

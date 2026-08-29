@@ -64,6 +64,76 @@ function hasData(r: DailyRecord): boolean {
   return r.tmax !== null || r.tmin !== null || r.precip !== null;
 }
 
+/**
+ * Is the fill station's RAIN GAUGE actually working?
+ *
+ * A dead tipping bucket does not report nothing — it reports 0.00, every day,
+ * forever. Counting reported days cannot see that, which is how Paris, Texas
+ * came to report 95% of days and 2.1 inches for January to August 2026 where
+ * both gridMET and the NWS state map say about 30. Measured 28 Aug 2026: half
+ * of 32 Texas stations checked failed some quality test.
+ *
+ * The check is possible because the fill window is fetched generously (45+
+ * days) while only the last few are used, so there is a long OVERLAP where the
+ * station and the gridded source both have data. Over that overlap they should
+ * roughly agree; a gauge at a fifth of the grid is not measuring.
+ *
+ * Deliberately loose. Convective rain is patchy and a point gauge can honestly
+ * miss a storm that crossed the rest of a 4 km cell, so this has to catch a
+ * dead instrument without rejecting a dry corner of a wet cell. Hence the two
+ * guards: enough rain in the window for the ratio to mean anything, and a
+ * threshold far below any plausible real disagreement.
+ */
+/**
+ * Thresholds placed from a MEASURED distribution, not picked. Gauge-to-grid
+ * ratio over the overlap window at 30 Texas sites, 28 Aug 2026:
+ *
+ *   0.111  Paris             broken — 2.1 in for the year against gridMET's 30.6
+ *   0.186  Temple            broken — 3.3 in against 22.3, and the DEFAULT PIN
+ *   ------ threshold 0.20 sits in the gap ------
+ *   0.243  Muleshoe          station is Clovis Muni, in New Mexico, ~60 km off
+ *   0.434  Wichita Falls     only 15 overlapping days
+ *   0.583  Dalhart
+ *   0.699 .. 1.380           the other 25 sites, a single healthy cluster
+ *
+ * So the cut is not near any healthy value: the nearest thing above it is a
+ * station in the wrong state, and real gauges start at 0.70. Both rejections
+ * are independently confirmed by their whole-year totals, which is the point —
+ * the threshold was not tuned until it produced a pleasing answer.
+ *
+ * Distance is a DIFFERENT fault and is deliberately not handled here. Muleshoe's
+ * problem is a gauge 60 km away measuring somewhere else, not a gauge that has
+ * stopped measuring, and one threshold should not quietly stand in for two
+ * unrelated checks.
+ */
+const GAUGE_MIN_OVERLAP_DAYS = 10;
+const GAUGE_MIN_GRID_MM = 25.4; // 1 inch — below this the ratio is noise
+const GAUGE_MIN_RATIO = 0.2;
+
+function gaugeLooksDead(
+  grid: DailyRecord[],
+  station: DailyRecord[],
+  before: string
+): { dead: boolean; gridMm: number; stationMm: number; days: number } {
+  const byDate = new Map(station.map((r) => [r.date, r]));
+  let gridMm = 0;
+  let stationMm = 0;
+  let days = 0;
+  for (const g of grid) {
+    if (g.date >= before) continue;
+    const s = byDate.get(g.date);
+    if (!s || g.precip === null || s.precip === null) continue;
+    gridMm += g.precip;
+    stationMm += s.precip;
+    days++;
+  }
+  const dead =
+    days >= GAUGE_MIN_OVERLAP_DAYS &&
+    gridMm >= GAUGE_MIN_GRID_MM &&
+    stationMm < GAUGE_MIN_RATIO * gridMm;
+  return { dead, gridMm, stationMm, days };
+}
+
 export async function GET(req: Request) {
   const url = new URL(req.url);
 
@@ -126,8 +196,18 @@ export async function GET(req: Request) {
      * How far back the fill might need to reach, driven by the source's own
      * declared lag: gridMET runs ~3 days behind, NASA POWER ~5, Daymet ~240.
      * The +30 is slack for a source running later than it advertises.
+     *
+     * The 120-day floor is NOT for the fill — the fill only ever uses the few
+     * days after the gridded source stops. It exists so the overlap with the
+     * gridded record is long enough to judge whether the station's rain gauge
+     * is alive (see `gaugeLooksDead`). At the previous 45 days the test was
+     * useless in a dry spell: Paris in July-August 2026 had a gauge reading 3%
+     * of the grid, which is unmistakably broken, but only 14.7 mm of grid rain
+     * to measure it against — too little to distinguish a dead gauge from a
+     * storm that missed one field. Four months is enough rain almost anywhere
+     * in Texas. A station payload of 120 days is still tiny.
      */
-    const fillDays = Math.max(source.meta.latencyDays + 30, 45);
+    const fillDays = Math.max(source.meta.latencyDays + 30, 120);
     const fillStart = shiftDate(today, -fillDays);
 
     // One station serves a wide area, so round the lookup to ~5 km and let
@@ -244,6 +324,21 @@ export async function GET(req: Request) {
     let recent: TaggedRecord[] = [];
     let recentError: string | null = fillSettled.error;
     const stationInfo: StationInfo | null = fillSettled.station;
+    /**
+     * The gauge health check, reported whether or not it rejected anything.
+     *
+     * Always emitted, not only on rejection: a guard whose numbers are only
+     * visible when it fires cannot be tuned, and cannot be seen to have gone
+     * wrong. This is how the threshold was placed in the gap between healthy
+     * and broken stations rather than next to a real value.
+     */
+    let gaugeCheck: {
+      rejected: boolean;
+      gridMm: number;
+      stationMm: number;
+      ratio: number | null;
+      days: number;
+    } | null = null;
 
     if (fillSettled.error) {
       console.warn(`[api/history] station top-up failed: ${fillSettled.error}`);
@@ -266,6 +361,33 @@ export async function GET(req: Request) {
       recent = fillSettled.rows
         .filter((r) => hasData(r) && r.date >= gapStart && r.date <= today)
         .map((r) => ({ ...r, provenance: "gapfill" as const }));
+
+      /**
+       * Drop the fill's RAINFALL if the gauge looks dead, but keep its
+       * temperatures.
+       *
+       * Surgical on purpose: the failure is one instrument, not the station, and
+       * a thermometer is usually fine while a tipping bucket is seized. Nulling
+       * only precip loses the least. A null reads through the whole app as "not
+       * measured" — accumulation stops there rather than adding a false zero,
+       * which is exactly the intended outcome.
+       */
+      const gauge = gaugeLooksDead(primary, fillSettled.rows, gapStart);
+      gaugeCheck = {
+        rejected: gauge.dead,
+        gridMm: Math.round(gauge.gridMm * 10) / 10,
+        stationMm: Math.round(gauge.stationMm * 10) / 10,
+        ratio: gauge.gridMm > 0 ? Math.round((gauge.stationMm / gauge.gridMm) * 1000) / 1000 : null,
+        days: gauge.days,
+      };
+      if (gauge.dead) {
+        recent = recent.map((r) => ({ ...r, precip: null }));
+        console.warn(
+          `[api/history] rain gauge at ${stationInfo?.name ?? "?"} looks dead: ` +
+            `${gauge.stationMm.toFixed(1)} mm vs ${gauge.gridMm.toFixed(1)} mm from ${source.meta.name} ` +
+            `over ${gauge.days} overlapping days — dropping its rainfall, keeping temperature.`
+        );
+      }
     }
 
     const records = [...tagged, ...recent];
@@ -292,6 +414,12 @@ export async function GET(req: Request) {
               }
             : null,
           error: recentError,
+          /**
+           * Reported rather than swallowed. A rejected gauge means the last few
+           * days carry temperature but no rainfall, and a reader comparing two
+           * locations deserves to know which one that happened at.
+           */
+          gaugeCheck,
         },
         /**
          * What the cache actually did. Exposed because a cache that has quietly

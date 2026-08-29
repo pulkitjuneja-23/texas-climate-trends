@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DailyRecord, Place, SourceMeta, TaggedRecord } from "@/lib/types";
 // From `defaults`, never `registry`: registry pulls in every source module,
 // and the Earth Engine ones use Node APIs that cannot be bundled for a browser.
-import { DEFAULT_SOURCE_ID, HISTORY_START_YEAR, historyYears } from "@/lib/sources/defaults";
+import { DEFAULT_SOURCE_ID, HISTORY_START_YEAR } from "@/lib/sources/defaults";
 import { DEFAULT_PLACE } from "@/lib/geo";
 import { GDD_PRESETS, plantingStart } from "@/lib/agro/gdd";
 import {
@@ -672,9 +672,15 @@ export default function Page() {
       */}
       <div className="hero-bar">
         <div className="hero-bar-inner">
+          {/*
+            The acronym is the name; the expansion sits under it because
+            "TWIRE" alone tells a first-time visitor nothing. The expansion is
+            hidden on phones — see globals.css — where the bar is sticky and
+            every row of it costs the reader permanently.
+          */}
           <div className="brand">
-            <h1>Texas Climate Trends</h1>
-            <small>{historyYears(currentYear)} years of weather history for your field</small>
+            <h1>TWIRE</h1>
+            <small>Texas Weather and Irrigation Resource Explorer</small>
           </div>
 
           {sourceList.length > 0 && (

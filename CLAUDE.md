@@ -1,4 +1,10 @@
-# CLAUDE.md — Texas Climate Trends
+# CLAUDE.md — TWIRE (Texas Weather and Irrigation Resource Explorer)
+
+> **Renamed 2026-08-28**, from "Texas Climate Trends". Only the DISPLAY NAME
+> changed. The Vercel URL (`texas-climate-trends.vercel.app`), the GitHub repo
+> slug, `GEE_PROJECT_ID` and the Supabase project name are all unchanged — they
+> are identifiers other systems resolve, and renaming them breaks live links and
+> credentials while gaining nothing. Do not "tidy" them.
 
 Working context for this repo. **Read this first in a new session.** Update the
 [Progress log](#progress-log) as work lands.
@@ -1688,6 +1694,29 @@ A first attempt at filtering used mean depth per wet day ≥ 0.3 in, which
 **wrongly dropped Amarillo, Lubbock and El Paso** — 0.23 in per rain day is
 normal in semi-arid west Texas, not a fault. Any gauge-quality rule has to be
 regional or it will discard the driest real data.
+
+**FIXED the same day — `gaugeLooksDead` in `app/api/history/route.ts`.** The fill
+window already over-fetches, so there is a long OVERLAP where the station and
+the gridded source both have data; over that, a working gauge and a 4 km cell
+should roughly agree. Below a fifth, the gauge's precip is nulled and its
+temperature kept — the failure is one instrument, not the station, and a null
+reads through the app as "not measured" so accumulation stops rather than
+adding a false zero.
+
+- **The 45-day fill window was too short to judge on** and had to go to 120.
+  Paris in Jul–Aug had a gauge at 3% of the grid — unmistakably broken — but
+  only 14.7 mm of grid rain behind it, which cannot separate a dead gauge from a
+  storm that missed one field. `fillDays` now floors at 120 for that reason
+  alone; the fill itself still only uses the days after `lastObserved`.
+- **Threshold placed from a measured distribution, not picked.** Across 30
+  sites: 0.111 Paris and 0.186 Temple (both independently confirmed broken by
+  their whole-year totals), then a gap, then 0.243 Muleshoe (station in New
+  Mexico, 60 km off — a DISTANCE fault, deliberately not handled here), and the
+  25 healthy sites in one cluster from 0.70 to 1.38.
+- **`gaugeCheck` is returned whether or not it rejects.** A guard whose numbers
+  only appear when it fires cannot be tuned and cannot be seen to have broken.
+- **Temple is the DEFAULT PIN**, so the default location was serving false zeros
+  in its most recent days until this landed.
 
 ## Next up
 
