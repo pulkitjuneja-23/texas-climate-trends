@@ -327,13 +327,6 @@ a {
   color: #ffffff;
 }
 
-.hero-bar .brand small {
-  display: block;
-  margin-top: 1px;
-  font-size: 0.73rem;
-  color: rgba(255, 255, 255, 0.78);
-}
-
 /* Controls sit a shade lighter than the bar so they read as controls. */
 .hero-bar .seg {
   background: rgba(255, 255, 255, 0.08);
@@ -413,12 +406,6 @@ a {
   flex-direction: column;
   gap: 1px;
   margin-right: auto;
-}
-
-.brand small {
-  color: var(--text-muted);
-  font-size: 0.72rem;
-  letter-spacing: 0.02em;
 }
 
 .card {
@@ -1295,13 +1282,59 @@ button:disabled {
   border-color: color-mix(in srgb, var(--soil) 26%, var(--border));
 }
 
+/*
+  OUTSIDE TEXAS.
+
+  Sits where "Season so far" would be, beside the map that still carries the
+  pin — so the reader sees where they clicked and the reason together. Styled
+  as an ordinary card rather than an error: a field in New Mexico is not a
+  fault, it is simply past the edge of what this claims to know.
+*/
+.outside-texas p {
+  margin: 0 0 10px;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+.outside-texas p.muted {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
 @media (max-width: 1100px) {
   .panel-rail { grid-template-columns: repeat(2, 1fr); }
 }
 
+/*
+  PHONES KEEP ALL FOUR COVERS ON SCREEN — 2x2, NOT A STACK.
+
+  Stacked full-width, the four covers ran most of a phone screen tall, so the
+  stage they open always started below the fold. A reader tapped a cover, the
+  page changed somewhere they could not see, and the covers read as dead. Two
+  by two the whole rail is about one thumb's reach and the stage is close
+  behind it. (The tap now also scrolls to the stage — see app/page.tsx — but
+  the rail should not have needed a scroll to make sense of it.)
+
+  At half a phone's width the long question does not fit, and clamping it to
+  two lines just makes four covers that all trail off mid-sentence. The short
+  label is the only text that survives legibly, so it becomes the whole label
+  — and it is what the button announces to a screen reader too.
+*/
 @media (max-width: 620px) {
-  .panel-rail { grid-template-columns: 1fr; gap: 8px; }
-  .pc-art { height: 64px; }
+  .panel-rail { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .pc-art { height: 56px; }
+  .pc-text { padding: 9px 10px 11px; }
+  .pc-title, .pc-blurb { display: none; }
+  .pc-eyebrow {
+    font-size: 0.76rem;
+    font-weight: 650;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--text-primary);
+    margin-bottom: 0;
+    line-height: 1.25;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1916,12 +1949,8 @@ tbody tr:last-child td {
     gap: 8px;
   }
 
-  .hero-bar .brand small {
-    display: none;
-  }
-
   .hero-bar .brand h1 {
-    font-size: 1rem;
+    font-size: 0.95rem;
   }
 
   .hero-bar .seg {
@@ -2009,10 +2038,6 @@ tbody tr:last-child td {
 
   h1 {
     font-size: 1.05rem;
-  }
-
-  .brand small {
-    font-size: 0.66rem;
   }
 }
 

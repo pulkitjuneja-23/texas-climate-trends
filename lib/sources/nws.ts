@@ -9,10 +9,11 @@
  * /gridpoints/{office}/{x},{y}/forecast returns 14 day/night periods = 7 days.
  */
 
-// The app renamed to TWIRE; the repository slug did not, and the repo is the
+// The app has been renamed; the repository slug has not, and the repo is the
 // contact route NWS asks for — so the identifier is new and the address is
 // still the one that resolves.
-const UA = "TWIRE/0.1 (github.com/pulkitjuneja-23/texas-climate-trends; contact via repo issues)";
+const UA =
+  "TexasWeatherExplorer/0.1 (github.com/pulkitjuneja-23/texas-climate-trends; contact via repo issues)";
 
 export interface NWSPeriod {
   number: number;

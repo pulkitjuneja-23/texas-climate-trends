@@ -5,11 +5,12 @@ import SiteAnalytics from "@/components/SiteAnalytics";
 
 export const metadata: Metadata = {
   /*
-    The acronym leads because that is what the site will be called in
-    conversation, and the expansion follows so a first-time visitor arriving
-    from a search result knows what it is.
+    The name says what the thing is, so it needs no expansion after it. The
+    acronym it replaced had to be glossed everywhere it appeared — in the tab,
+    in the masthead, in every exported file — which is a fair sign it was never
+    doing the work a name is for.
   */
-  title: "TWIRE — Texas Weather and Irrigation Resource Explorer",
+  title: "Texas Weather Explorer",
   description:
     "30 years of weather history and water use for any point in Texas — normals, individual years, forecast, and analog-year matching. Built for growers.",
 };

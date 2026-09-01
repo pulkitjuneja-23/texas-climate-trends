@@ -94,7 +94,7 @@ export interface FigureMeta {
   title: string;
   /** Location and settings, e.g. "31.30, -97.40 · accumulated · in". */
   subtitle: string;
-  /** Provenance, e.g. "gridMET (4 km) · TWIRE · August 28, 2026". */
+  /** Provenance, e.g. "gridMET (4 km) · Texas Weather Explorer · August 28, 2026". */
   footer: string;
   /**
    * Drawn under the plot.

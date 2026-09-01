@@ -19,6 +19,13 @@
  * far worse trade than occasionally counting one's own phone.
  */
 
+/*
+  DELIBERATELY still the old name. This is a storage key, not a label — nobody
+  reads it — and renaming it would silently un-mark every browser already
+  flagged, so the author's own phone and laptop would start counting as real
+  traffic with nothing on screen to say so. Renaming it costs a measurement and
+  buys tidiness.
+*/
 const KEY = "twire:self";
 const TURN_ON = /[?&]notme=1\b/;
 const TURN_OFF = /[?&]notme=0\b/;

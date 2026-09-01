@@ -5,7 +5,7 @@ import type { DailyRecord, Place, SourceMeta, TaggedRecord } from "@/lib/types";
 // From `defaults`, never `registry`: registry pulls in every source module,
 // and the Earth Engine ones use Node APIs that cannot be bundled for a browser.
 import { DEFAULT_SOURCE_ID, HISTORY_START_YEAR } from "@/lib/sources/defaults";
-import { DEFAULT_PLACE } from "@/lib/geo";
+import { DEFAULT_PLACE, inTexas } from "@/lib/geo";
 import { GDD_PRESETS, plantingStart } from "@/lib/agro/gdd";
 import {
   alignByYear,
@@ -139,6 +139,30 @@ export default function Page() {
    */
   const [panel, setPanel] = useState<PanelId>("season");
 
+  /**
+   * The stage, so opening a cover can take the reader to what it opened.
+   *
+   * On a phone the rail is two rows and the stage starts below the fold, so a
+   * tap changed the page somewhere the reader could not see and the covers
+   * looked inert. On a desktop the rail is one row but the season chart still
+   * starts near the bottom of the window.
+   */
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  /** Set only by a tap on the rail, so first load and ?panel= never jump. */
+  const wantScroll = useRef(false);
+
+  /**
+   * This tool is Texas-only, so a pin dropped outside the state says so rather
+   * than quietly serving numbers.
+   *
+   * gridMET and NASA POWER both cover far more than Texas, so a click in New
+   * Mexico used to return a complete, plausible, fully-drawn analysis — while
+   * the county yields, the archive and the station network all silently had
+   * nothing for it. Half a tool that looks like a whole one is the worse
+   * failure, so the state line is now the edge of what this claims to know.
+   */
+  const outsideTexas = !inTexas(place.lat, place.lon);
+
   const currentYear = new Date().getFullYear();
   // "Since" dates for the season-to-date tiles. Default 1 Jan, but a grower
   // usually cares about accumulation since planting, not since New Year.
@@ -238,7 +262,7 @@ export default function Page() {
   const prevSource = useRef(sourceId);
 
   useEffect(() => {
-    if (!urlReady) return;
+    if (!urlReady || outsideTexas) return;
 
     if (prevSource.current !== sourceId) {
       setHistory(null);
@@ -276,10 +300,10 @@ export default function Page() {
       });
 
     return () => ctrl.abort();
-  }, [place.lat, place.lon, sourceId, urlReady]);
+  }, [place.lat, place.lon, sourceId, urlReady, outsideTexas]);
 
   useEffect(() => {
-    if (!urlReady) return;
+    if (!urlReady || outsideTexas) return;
     const ctrl = new AbortController();
     setFcLoading(true);
 
@@ -290,7 +314,7 @@ export default function Page() {
       .finally(() => setFcLoading(false));
 
     return () => ctrl.abort();
-  }, [place.lat, place.lon, urlReady]);
+  }, [place.lat, place.lon, urlReady, outsideTexas]);
 
   /**
    * Reference ET is ~355 KB of daily values and ~27 upstream requests, so it is
@@ -311,7 +335,7 @@ export default function Page() {
 
   // ---- water (OpenET actual ET, plus reference ET on demand) ----
   useEffect(() => {
-    if (!urlReady) return;
+    if (!urlReady || outsideTexas) return;
     if (needsReference && refLoaded) return; // already have everything
 
     const ctrl = new AbortController();
@@ -337,7 +361,7 @@ export default function Page() {
       .finally(() => setWaterLoading(false));
 
     return () => ctrl.abort();
-  }, [place.lat, place.lon, urlReady, needsReference, refLoaded]);
+  }, [place.lat, place.lon, urlReady, needsReference, refLoaded, outsideTexas]);
 
   /**
    * ---- visit log ----
@@ -389,7 +413,7 @@ export default function Page() {
    * just clears it rather than surfacing an error.
    */
   useEffect(() => {
-    if (!urlReady) return;
+    if (!urlReady || outsideTexas) return;
 
     const ctrl = new AbortController();
     setYieldsLoading(true);
@@ -401,7 +425,7 @@ export default function Page() {
       .finally(() => setYieldsLoading(false));
 
     return () => ctrl.abort();
-  }, [place.lat, place.lon, urlReady]);
+  }, [place.lat, place.lon, urlReady, outsideTexas]);
 
   /**
    * What a downloaded CSV or figure says about where its numbers came from.
@@ -629,6 +653,54 @@ export default function Page() {
   const handlePlace = useCallback((p: Place) => setPlace(p), []);
 
   /**
+   * Put the top of the stage just under the masthead.
+   *
+   * The bar is `position: sticky` and self-sizing — it takes an extra row at
+   * the mobile breakpoint where the source picker wraps — so its height is
+   * measured rather than hard-coded. A constant here would tuck the first line
+   * of every chart under the bar on exactly the screens that need this most.
+   */
+  const scrollToStage = useCallback(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const bar = document.querySelector<HTMLElement>(".hero-bar");
+    const top =
+      stage.getBoundingClientRect().top + window.scrollY - (bar?.offsetHeight ?? 0) - 12;
+    window.scrollTo({
+      top: Math.max(0, top),
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+    });
+  }, []);
+
+  /**
+   * Re-tapping the open cover scrolls immediately: `setPanel` with the value it
+   * already holds is a no-op, so the effect below would never run, and the one
+   * cover a reader is most likely to tap twice would be the one that did
+   * nothing.
+   */
+  const handlePanel = useCallback(
+    (id: PanelId) => {
+      if (id === panel) {
+        scrollToStage();
+        return;
+      }
+      wantScroll.current = true;
+      setPanel(id);
+    },
+    [panel, scrollToStage]
+  );
+
+  // After the new panel has rendered — its content is mounted only once it is
+  // the open one, so the stage has no measurable position until then.
+  useEffect(() => {
+    if (!wantScroll.current) return;
+    wantScroll.current = false;
+    scrollToStage();
+  }, [panel, scrollToStage]);
+
+  /**
    * ET can end earlier than rainfall — it stops at a satellite data gap while
    * rain runs to yesterday. Showing "21.9 in rain" beside "14.8 in ET" and a
    * "-4.4 in deficit" is nonsense unless the reader knows the last two cover a
@@ -716,14 +788,11 @@ export default function Page() {
       <div className="hero-bar">
         <div className="hero-bar-inner">
           {/*
-            The acronym is the name; the expansion sits under it because
-            "TWIRE" alone tells a first-time visitor nothing. The expansion is
-            hidden on phones — see globals.css — where the bar is sticky and
-            every row of it costs the reader permanently.
+            The name stands on its own — it says what the tool is, so there is
+            no expansion to hide on phones and no gloss to keep in step with it.
           */}
           <div className="brand">
-            <h1>TWIRE</h1>
-            <small>Texas Weather and Irrigation Resource Explorer</small>
+            <h1>Texas Weather Explorer</h1>
           </div>
 
           {sourceList.length > 0 && (
@@ -815,6 +884,30 @@ export default function Page() {
             </div>
           </div>
 
+          {/*
+            Outside Texas the map keeps the pin exactly where it was dropped.
+            A notice with no pin leaves the reader unsure whether the click
+            even registered; showing both makes the boundary the explanation.
+          */}
+          {outsideTexas ? (
+            <div className="card outside-texas">
+              <div className="card-head">
+                <h2>Data not available</h2>
+              </div>
+              <p>
+                This tool covers <strong>Texas only</strong>. The pin is at{" "}
+                {place.lat.toFixed(4)}°, {place.lon.toFixed(4)}° — outside the state.
+              </p>
+              <p className="muted">
+                The county yields, the rainfall archive and the station network behind
+                these figures are all built for Texas. A point past the state line would
+                come back partly empty while still looking like a complete answer.
+              </p>
+              <button style={{ marginTop: 4 }} onClick={() => handlePlace({ ...DEFAULT_PLACE })}>
+                Back to Texas
+              </button>
+            </div>
+          ) : (
           <div>
             <div className="card">
               <div className="card-head">
@@ -1085,9 +1178,10 @@ export default function Page() {
               </div>
             )}
           </div>
+          )}
         </div>
 
-        {histError && (
+        {!outsideTexas && histError && (
           <div className="note error">
             <span>⚠</span>
             <span>
@@ -1100,13 +1194,13 @@ export default function Page() {
           </div>
         )}
 
-        {histLoading && !history ? (
+        {outsideTexas ? null : histLoading && !history ? (
           <div className="card">
             <div className="skeleton" style={{ height: 420 }} />
           </div>
         ) : records.length > 0 ? (
           <>
-            <PanelRail active={panel} onChange={setPanel} />
+            <PanelRail active={panel} onChange={handlePanel} />
 
             {/*
               The stage. Its treatment changes with the open panel — a light
@@ -1118,7 +1212,7 @@ export default function Page() {
               Only the open panel is mounted, so three charts are not being
               computed for a reader looking at the fourth.
             */}
-            <div id="panel-stage" className={`panel-stage stage-${panel}`}>
+            <div ref={stageRef} id="panel-stage" className={`panel-stage stage-${panel}`}>
             {panel === "season" && seasonChart}
 
             {panel === "analog" && (

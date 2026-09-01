@@ -1,6 +1,7 @@
-# TWIRE — Texas Weather and Irrigation Resource Explorer
+# Texas Weather Explorer
 
-> Renamed from "Texas Climate Trends" on 28 Aug 2026. The **name** changed; the
+> Renamed from "Texas Climate Trends" on 28 Aug 2026, and from the acronym
+> "TWIRE" to the plain name on 1 Sep 2026. The **name** changed; the
 > deployment URL, the repository slug, the Google Cloud project id and the
 > Supabase project name did not — those are identifiers other systems resolve,
 > and renaming them would break live links and credentials for no gain.

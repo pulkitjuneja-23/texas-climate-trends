@@ -1,6 +1,7 @@
-# CLAUDE.md — TWIRE (Texas Weather and Irrigation Resource Explorer)
+# CLAUDE.md — Texas Weather Explorer
 
-> **Renamed 2026-08-28**, from "Texas Climate Trends". Only the DISPLAY NAME
+> **Renamed 2026-08-28** from "Texas Climate Trends", then **2026-09-01** from
+> the acronym "TWIRE" to the plain name. Only the DISPLAY NAME
 > changed. The Vercel URL (`texas-climate-trends.vercel.app`), the GitHub repo
 > slug, `GEE_PROJECT_ID` and the Supabase project name are all unchanged — they
 > are identifiers other systems resolve, and renaming them breaks live links and
