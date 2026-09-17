@@ -104,8 +104,17 @@ export function monthlyStats(s: PlausibilitySample): MonthStats[] {
   }));
 }
 
-/** Problems found, in words. Empty means the sample looks like real weather. */
-export function implausibleMonths(stats: MonthStats[]): string[] {
+/**
+ * Problems found, in words. Empty means the sample looks like real weather.
+ *
+ * `statewideDryRule` is only valid on a statewide sample of ~1,000 cells. A
+ * handful of points can genuinely go a month without rain; for those use
+ * `longestSharedDrySpell` instead.
+ */
+export function implausibleMonths(
+  stats: MonthStats[],
+  { statewideDryRule = true }: { statewideDryRule?: boolean } = {}
+): string[] {
   const problems: string[] = [];
   for (const m of stats) {
     if (m.days < MIN_DAYS) continue;
@@ -124,9 +133,43 @@ export function implausibleMonths(stats: MonthStats[]): string[] {
     if (SUMMER_MONTHS.has(month) && !(m.meanTmaxC >= MIN_SUMMER_TMAX_C)) {
       problems.push(`${m.month}: statewide mean high ${m.meanTmaxC.toFixed(1)} degC in summer`);
     }
-    if (m.days >= MIN_DAYS_FOR_DRY_RULE && m.wetShare === 0) {
+    if (statewideDryRule && m.days >= MIN_DAYS_FOR_DRY_RULE && m.wetShare === 0) {
       problems.push(`${m.month}: not one cell-day with 1 mm of rain anywhere in Texas`);
     }
   }
   return problems;
+}
+
+/**
+ * The longest run of consecutive days on which NONE of the given places had any
+ * measurable rain — the flat line, stated as a number.
+ *
+ * Places spread across the state do not all go dry together for long: the east
+ * sees rain most weeks even when the west is in drought. So a long shared spell
+ * across a spread of sites means the data went flat, not the weather. `precip`
+ * is day-major, `cells` values per day; a null counts as dry, because a missing
+ * value draws the same flat line on screen.
+ */
+export function longestSharedDrySpell(
+  dates: string[],
+  precip: (number | null)[],
+  cells: number
+): { days: number; from: string | null; to: string | null } {
+  let best = { days: 0, from: null as string | null, to: null as string | null };
+  let runStart = -1;
+  for (let d = 0; d <= dates.length; d++) {
+    let anyRain = d === dates.length;
+    for (let c = 0; !anyRain && c < cells; c++) {
+      const p = precip[d * cells + c];
+      if (p !== null && p >= 0.1) anyRain = true;
+    }
+    if (!anyRain) {
+      if (runStart < 0) runStart = d;
+    } else if (runStart >= 0) {
+      const len = d - runStart;
+      if (len > best.days) best = { days: len, from: dates[runStart], to: dates[d - 1] };
+      runStart = -1;
+    }
+  }
+  return best;
 }

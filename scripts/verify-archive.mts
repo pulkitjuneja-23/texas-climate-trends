@@ -86,7 +86,9 @@ const series: Record<string, (number | null)[]> = {};
 for (const [key, vm] of Object.entries(manifest.vars)) {
   let raw: Buffer;
   try {
-    raw = zstdDecompressSync(await readKey(chunkKey(PART, key, pos.latChunk, pos.lonChunk)));
+    raw = zstdDecompressSync(
+      await readKey(chunkKey(manifest.parts[PART].dir ?? PART, key, pos.latChunk, pos.lonChunk))
+    );
   } catch (e) {
     console.log(`  ${key}: not available (${(e as Error).message.slice(0, 70)})`);
     continue;

@@ -1828,10 +1828,61 @@ checks the year being sealed, because nothing ever rewrites the archive part aft
 hours after the fix, so the `hist:gridmet:*:2026` entries were purged after deploying. Purge AFTER
 the deploy, not before: the old code ignores `withheld` and would re-cache the bad chunks.
 
-**If the refresh goes red with "REFUSING TO PUBLISH":** the site is still correct, just a few seconds
-slower on the current year. Check whether Idaho has repaired its file (`scripts/verify-current.mts`
-compares against Earth Engine). No action is needed once Idaho fixes it; the next daily run lifts
-the flag by itself.
+#### Same day, later — stage, read back, promote; hold and retry; check the website
+
+User (who had just shown the site to growers): *check every day that values are realistic; if not,
+hold on to the good data, retry in a few hours, and only update the website when it's good.*
+Built as GitHub Actions, not an AI agent: the rules are fixed numbers, and a scheduled job applies
+them identically every time, for free.
+
+**The refresh never writes the live copy any more.** The current part alternates between two
+folders, `current` and `current-b` (`partDir()`, manifest `parts.current.dir`). Each run:
+1. exits in ~20 s with no uploads if Idaho has nothing new and nothing is on `hold`;
+2. **check 1** — Idaho's statewide sample (above); also holds if Idaho's latest day went BACKWARDS;
+3. uploads to the spare folder;
+4. **check 2** — reads 35 of 340 stored chunks back from R2 (every 4th cell, ~560 cells), unpacks
+   them the way the site does, and runs the same rules. Catches faults between download and disk
+   that check 1 cannot see;
+5. only then points the manifest at the new folder, stamps `writtenAt`, and clears `hold`.
+
+Anything failing → `holdAndExit`: the live copy keeps serving, `hold` {since, lastTry, reason,
+upstreamEnd, lastAlert} goes in the manifest, a summary goes on the run page. **A hold stays GREEN**
+(nothing to fix, and a few hours are invisible since the station fills recent days) and goes **RED
+(→ email) only after 24 h, at most once a day**. Schedule moved from daily to **every 3 hours**
+(`20 */3 * * *`), so a hold retries itself.
+
+**Traps handled:**
+- The folders are reused on alternate refreshes, so a cache could hand back a two-day-old chunk
+  from the same key. Current-part chunks are no longer `immutable` (5 min), and the reader appends
+  `?v=<writtenAt>` to every current-part chunk URL. R2 ignores the query string; every cache keys on it.
+- `--vars` with the current part is refused: it would stage a folder with days-old, different-length
+  variables beside the new one and then promote it.
+- A hold during a rollover keeps `building: true`. Publishing the pre-rebuild manifest would switch
+  the archive back on over half-rewritten chunks. It always alerts.
+- `--stage-only` uploads to the spare folder and runs both checks, but never writes the manifest.
+  Safe against the live bucket. **Verified with it:** staged Idaho's broken data to `current-b`;
+  check 2's statistics matched check 1's independent sample (Jan range 1.8 K both; Aug 14.9 vs
+  15.3), August and September passed, January–July were rejected, and the live manifest was
+  byte-identical afterwards. The hold path was then run for real: hold recorded, exit 0, withheld kept.
+- `withheld` (set only by the first version of this fix) is still honoured and cleared by the next
+  promotion. Nothing sets it any more: the live copy is now always one that passed.
+
+**Website check — `scripts/check-live-site.mts`, `.github/workflows/site-check.yml`, daily 18:40
+UTC.** Asks the LIVE site for 8 inland places across Texas and judges the current year's gridded
+days together: monthly range and summer rules (not the statewide dry rule — 8 points can
+legitimately have a dry month), a **shared dry spell** (`longestSharedDrySpell` — consecutive days
+with no rain at ANY of the 8), and freshness (newest gridMET day ≤ 10 days old). It only alerts. It
+covers what the refresh cannot see: the Supabase cache, Earth Engine, the station splice.
+**Back-tested 1996–2025 for the same 8 places:** longest real shared dry spell 22 days (2024)
+against an alarm at 45; smallest monthly range 9.6 K against 6; coolest summer month 30.7 °C against
+20. This morning's broken copy scored 237 days, 0.7 K and 0.3 °C.
+
+**If a refresh goes red:** read the summary on the run page. The site is still correct: it is
+either on the last good copy or, while `withheld` is set, on Earth Engine. If Idaho's data is
+genuinely right (checked by hand, e.g. `scripts/verify-current.mts`), re-run with
+`--allow-implausible`. Otherwise do nothing; the next run that passes publishes by itself.
+**If the website check goes red** while the refresh is green, suspect the cache or Earth Engine,
+not Idaho.
 
 ## Next up
 

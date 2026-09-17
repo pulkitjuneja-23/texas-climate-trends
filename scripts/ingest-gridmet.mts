@@ -22,7 +22,9 @@
  *   --start YYYY first year of the archive (default 1995)
  *   --force      refresh even if the archive is already up to date
  *   --allow-implausible
- *                publish even when the plausibility check fails (see step 2b)
+ *                publish even when the plausibility checks fail (see step 2b)
+ *   --stage-only upload to the spare folder and run both checks, but never
+ *                touch the manifest — safe to run against the live bucket
  *
  * THE TWO SCHEDULED JOBS (see .github/workflows/)
  *   daily   --r2 --part current   ~1,371 uploads, a few minutes
@@ -42,9 +44,9 @@
  */
 
 import { writeFile, mkdir } from "node:fs/promises";
-import { readFileSync } from "node:fs";
+import { readFileSync, appendFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { zstdCompressSync, constants as zlibConstants } from "node:zlib";
+import { zstdCompressSync, zstdDecompressSync, constants as zlibConstants } from "node:zlib";
 import {
   parseNetCDF3,
   readShorts,
@@ -61,11 +63,18 @@ import {
   settledThroughYear,
   addDays,
   dayCount,
+  partDir,
+  chunkKey,
+  CURRENT_DIRS,
   type Manifest,
   type Part,
 } from "../lib/archive/layout.ts";
 import { r2ConfigFromEnv, putMany, getObject, type R2Config } from "../lib/archive/r2.ts";
-import { monthlyStats, implausibleMonths } from "../lib/archive/plausibility.ts";
+import {
+  monthlyStats,
+  implausibleMonths,
+  type PlausibilitySample,
+} from "../lib/archive/plausibility.ts";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -105,6 +114,12 @@ const START_YEAR = Number(arg("start") ?? 1995);
 const FORCE = flag("force");
 /** Publish even if the plausibility check fails. Only after checking the data by hand. */
 const ALLOW_IMPLAUSIBLE = flag("allow-implausible");
+/**
+ * Upload to the spare folder and run both checks, but never write the manifest
+ * — no promotion, no hold. The live site cannot be affected. Continues past a
+ * failed check 1 so that check 2 can be exercised on the same data.
+ */
+const STAGE_ONLY = flag("stage-only");
 
 if (!OUT_DIR && !TO_R2) {
   console.error("Choose an output: --out <dir> for a local trial, or --r2 to upload.");
@@ -376,32 +391,167 @@ if (rebuildingArchive) {
 }
 
 /**
- * --- 2b. Refuse to publish impossible weather ---
+ * --- 2b. Hold, don't publish, when anything looks wrong ---
  *
  * On 2026-09-17 Idaho's own 2026 files began serving January-July as zero rain
  * everywhere and July highs below freezing. Every shape, coordinate and date was
- * right, so every existing check passed, and the refresh overwrote a good season
- * with that in 77 seconds. See lib/archive/plausibility.ts for the rules and
- * the measurements behind them.
+ * right, so every check that existed passed, and the refresh overwrote a good
+ * season with that in 77 seconds. The site drew a flat rainfall line for every
+ * location in Texas, in front of growers.
  *
- * A 1-in-8 statewide sample of the range about to be written: about 1 MB per
- * variable and a few seconds. When rebuilding the archive, the year being
- * sealed is included too, because once sealed nothing ever rewrites it.
+ * Since then a refresh never touches the live copy. It is checked TWICE:
+ *   1. here, on a cheap statewide sample of what Idaho is serving, before a
+ *      single upload is spent; and
+ *   2. after uploading to the spare folder, on the chunks as actually stored —
+ *      which is what the site would read (step 4b).
+ * Only a copy that passes both is promoted. Anything else HOLDS: the previous
+ * good copy keeps serving, the reason is recorded in the manifest, and the
+ * workflow tries again a few hours later.
+ */
+
+/** A hold only fails the GitHub run (and so emails) once it has lasted this long. */
+const ALERT_AFTER_HOURS = 24;
+/** ...and then no more often than this. */
+const ALERT_EVERY_HOURS = 24;
+
+/** Appends to the GitHub run page's summary, when running in Actions. */
+function summary(markdown: string) {
+  const path = process.env.GITHUB_STEP_SUMMARY;
+  if (path) appendFileSync(path, markdown + "\n");
+}
+
+/**
+ * Keep serving the last good copy, record why, and stop.
  *
- * On failure NOTHING is uploaded, and the live manifest is republished with the
- * current part marked `withheld`, so the site stops serving whatever those
- * chunks hold — possibly an earlier bad copy — and reads this year from Earth
- * Engine instead. The run then exits non-zero so GitHub emails the owner.
+ * Exits 0 for a short hold — a few hours' delay is invisible on the site, since
+ * the nearest station fills the most recent days either way, and an email every
+ * three hours would teach the owner to ignore them. Exits 1 once the hold has
+ * lasted ALERT_AFTER_HOURS, at most once per ALERT_EVERY_HOURS.
  *
- * Runs BEFORE the "nothing new upstream" exit, deliberately. The bad copy of
- * 2026-09-17 was already stored when this check was written, and Idaho's latest
- * date had not moved — so a check placed after that exit would have looked at
- * nothing and left the flat line on the site.
+ * `keepBuilding` preserves the rebuild flag: once a rollover has started
+ * overwriting the archive part, publishing the pre-rebuild manifest would turn
+ * the archive back on over half-rewritten chunks.
+ */
+async function holdAndExit(problems: string[], stage: string, keepBuilding = false): Promise<never> {
+  const now = new Date().toISOString();
+  const prev = existing?.hold;
+  const since = prev?.since ?? now;
+  const heldHours = (Date.parse(now) - Date.parse(since)) / 3.6e6;
+  const sinceAlert = prev?.lastAlert ? (Date.parse(now) - Date.parse(prev.lastAlert)) / 3.6e6 : Infinity;
+  const alert = keepBuilding || (heldHours >= ALERT_AFTER_HOURS && sinceAlert >= ALERT_EVERY_HOURS);
+
+  const reason = `${stage}: ${problems[0]}${problems.length > 1 ? ` (and ${problems.length - 1} more)` : ""}`;
+
+  console.error(`\nHOLDING — not publishing. ${stage}:`);
+  for (const p of problems) console.error(`  ${p}`);
+
+  if (STAGE_ONLY) {
+    console.error(`\n--stage-only: the manifest was not touched.`);
+    process.exit(1);
+  }
+
+  if (r2 && existing) {
+    const held: Manifest = {
+      ...existing,
+      ...(keepBuilding ? { building: true } : {}),
+      hold: {
+        since,
+        lastTry: now,
+        reason,
+        upstreamEnd: latest,
+        ...(alert ? { lastAlert: now } : prev?.lastAlert ? { lastAlert: prev.lastAlert } : {}),
+      },
+    };
+    await flush(
+      [
+        {
+          key: MANIFEST_KEY,
+          body: json(held),
+          opts: { contentType: "application/json", cacheControl: META_CACHE },
+        },
+      ],
+      "hold recorded"
+    );
+  }
+
+  const serving = existing
+    ? existing.parts.current.withheld
+      ? `The site is reading ${existing.parts.current.start.slice(0, 4)} from Earth Engine (the stored copy was withheld earlier).`
+      : `The site keeps serving the last good copy, through ${existing.parts.current.end}.`
+    : `Nothing is published yet.`;
+  const heldFor = heldHours < 1 ? "just started" : `held for ${heldHours.toFixed(0)} hours`;
+
+  console.error(
+    `\n${serving}\nNothing new was published (${heldFor}). The next scheduled run tries again.` +
+      (alert ? `\nFailing this run so GitHub sends an alert.` : "") +
+      `\nIf the data has been checked by hand and is genuinely right, re-run with --allow-implausible.`
+  );
+  summary(
+    `## gridMET update held — nothing published\n\n` +
+      `**${stage}** (${heldFor}):\n\n${problems.map((p) => `- ${p}`).join("\n")}\n\n${serving}\n`
+  );
+  process.exit(alert ? 1 : 0);
+}
+
+/**
+ * Nothing new upstream — stop before spending a single upload.
+ *
+ * Idaho's feed stalls for days at a time, and the workflow now runs every few
+ * hours, so this is by far the commonest outcome and must stay cheap. A hold or
+ * a withheld part is never "already current": Idaho may have repaired its file
+ * without advancing the latest date, and only a run can find that out.
+ */
+if (!rebuildingArchive && existing && !FORCE) {
+  const c = existing.parts.current;
+  if (
+    c.end === RANGES.current.end &&
+    c.start === RANGES.current.start &&
+    !c.withheld &&
+    !existing.hold
+  ) {
+    console.log(
+      `\nAlready current: gridMET's latest day is ${latest} and the archive already holds it.\n` +
+        `Nothing uploaded. Use --force to refresh anyway.`
+    );
+    process.exit(0);
+  }
+}
+
+/** The plausibility rules, applied to a sample, with the monthly figures logged. */
+function judge(label: string, sample: PlausibilitySample): string[] {
+  const stats = monthlyStats(sample);
+  console.log(`  ${label} (${sample.cells} cells):`);
+  for (const s of stats) {
+    console.log(
+      `    ${s.month}  range ${s.meanRangeK.toFixed(1)} K  high ${s.meanTmaxC.toFixed(1)} degC  ` +
+        `wet ${(s.wetShare * 100).toFixed(1)}%  missing ${(s.fillShare * 100).toFixed(0)}%`
+    );
+  }
+  const problems = implausibleMonths(stats);
+  if (problems.length && ALLOW_IMPLAUSIBLE) {
+    console.log(`\n  CONTINUING DESPITE ${problems.length} FAILED CHECKS (--allow-implausible):`);
+    for (const p of problems) console.log(`    ${p}`);
+    return [];
+  }
+  return problems;
+}
+
+// Idaho moving its latest day BACKWARDS means its feed is mid-rebuild. Publishing
+// would silently delete days the site already shows.
+if (existing && !rebuildingArchive && RANGES.current.end < existing.parts.current.end) {
+  await holdAndExit(
+    [`Idaho's latest day is ${latest}, but the live copy already runs to ${existing.parts.current.end}`],
+    "Idaho's feed went backwards"
+  );
+}
+
+/**
+ * Check 1: a 1-in-8 statewide sample of what Idaho is serving — about 1 MB per
+ * variable and a few seconds. When rebuilding the archive, the year being sealed
+ * is included too, because once sealed nothing ever rewrites it.
  */
 {
-  const checkStart = rebuildingArchive
-    ? `${archiveEnd.slice(0, 4)}-01-01`
-    : RANGES.current.start;
+  const checkStart = rebuildingArchive ? `${archiveEnd.slice(0, 4)}-01-01` : RANGES.current.start;
   const checkEnd = RANGES.current.end;
   const STRIDE = 8;
 
@@ -420,88 +570,59 @@ if (rebuildingArchive) {
   const [tx, tn, pr] = await Promise.all(["tmmx", "tmmn", "pr"].map(sampleOf));
   const nCheckDays = dayCount(checkStart, checkEnd);
   if ([tx, tn, pr].some((s) => s.days !== nCheckDays || s.cells !== tx.cells)) {
-    throw new Error(
-      `Plausibility sample came back misshapen: expected ${nCheckDays} days, got ` +
-        `${tx.days}/${tn.days}/${pr.days} with ${tx.cells}/${tn.cells}/${pr.cells} cells`
+    await holdAndExit(
+      [
+        `expected ${nCheckDays} days, got ${tx.days}/${tn.days}/${pr.days} ` +
+          `with ${tx.cells}/${tn.cells}/${pr.cells} cells`,
+      ],
+      "Idaho's sample came back misshapen"
     );
   }
 
-  const stats = monthlyStats({
+  const problems = judge(`check 1 — Idaho's data, ${checkStart} -> ${checkEnd}`, {
     dates: Array.from({ length: nCheckDays }, (_, i) => addDays(checkStart, i)),
     tmax: tx.values,
     tmin: tn.values,
     precip: pr.values,
     cells: tx.cells,
   });
-  console.log(`  plausibility check ${checkStart} -> ${checkEnd} (${tx.cells} sampled cells):`);
-  for (const s of stats) {
-    console.log(
-      `    ${s.month}  range ${s.meanRangeK.toFixed(1)} K  high ${s.meanTmaxC.toFixed(1)} degC  ` +
-        `wet ${(s.wetShare * 100).toFixed(1)}%  missing ${(s.fillShare * 100).toFixed(0)}%`
-    );
-  }
-
-  const problems = implausibleMonths(stats);
-  if (problems.length && ALLOW_IMPLAUSIBLE) {
-    console.log(`\n  PUBLISHING DESPITE ${problems.length} FAILED CHECKS (--allow-implausible):`);
-    for (const p of problems) console.log(`    ${p}`);
+  if (problems.length && STAGE_ONLY) {
+    console.log(`\n  --stage-only: check 1 failed (${problems.length} problems); continuing to exercise check 2`);
   } else if (problems.length) {
-    const reason = `Idaho served implausible values (${problems[0]}${
-      problems.length > 1 ? `, and ${problems.length - 1} more` : ""
-    })`;
-    console.error(`\nREFUSING TO PUBLISH — the University of Idaho is serving impossible weather:`);
-    for (const p of problems) console.error(`  ${p}`);
-
-    if (r2 && existing && !existing.building) {
-      const withheldManifest: Manifest = {
-        ...existing,
-        builtAt: new Date().toISOString(),
-        parts: {
-          ...existing.parts,
-          current: { ...existing.parts.current, withheld: reason },
-        },
-      };
-      await flush(
-        [
-          {
-            key: MANIFEST_KEY,
-            body: json(withheldManifest),
-            opts: { contentType: "application/json", cacheControl: META_CACHE },
-          },
-        ],
-        "current part withheld"
-      );
-      console.error(
-        `\nNothing was uploaded. The current part (${existing.parts.current.start} -> ` +
-          `${existing.parts.current.end}) is now WITHHELD, so the site reads it from Earth Engine:\n` +
-          `correct, a few seconds slower. The next refresh that passes this check lifts it.\n` +
-          `If Idaho's data is genuinely right, re-run with --allow-implausible.`
-      );
-    } else {
-      console.error(`\nNothing was uploaded and the manifest was left alone.`);
-    }
-    process.exit(1);
+    await holdAndExit(problems, "Idaho is serving impossible weather");
   }
 }
 
 /**
- * Nothing new upstream — stop before spending a single upload.
+ * Which folder each part is written to.
  *
- * Idaho's feed stalls for days at a time, and a scheduled job that rewrites
- * 1,371 identical objects each time it does is pure waste against the free
- * allowance. Only applies to a plain refresh; an explicit rebuild always runs.
+ * The archive part is rewritten in place under the `building` flag, as before.
+ * The current part goes to whichever of CURRENT_DIRS is NOT live, so the live
+ * copy is never touched until the new one has passed check 2 and the manifest
+ * is pointed at it.
  */
-if (!rebuildingArchive && existing && !FORCE) {
-  const c = existing.parts.current;
-  // A withheld part is never "already current": Idaho may have repaired the
-  // file without advancing its latest date, and only a full rewrite clears it.
-  if (c.end === RANGES.current.end && c.start === RANGES.current.start && !c.withheld) {
-    console.log(
-      `\nAlready current: gridMET's latest day is ${latest} and the archive already holds it.\n` +
-        `Nothing uploaded. Use --force to refresh anyway.`
-    );
-    process.exit(0);
-  }
+const liveCurrentDir = existing ? partDir(existing, "current") : CURRENT_DIRS[0];
+const DIR: Record<Part, string> = {
+  archive: "archive",
+  current: !r2
+    ? CURRENT_DIRS[0]
+    : liveCurrentDir === CURRENT_DIRS[0]
+      ? CURRENT_DIRS[1]
+      : CURRENT_DIRS[0],
+};
+const writtenAt = new Date().toISOString();
+
+// A --vars run would stage a folder whose other variables are days old — and a
+// different length — and then promote it. Staging only works whole.
+if (r2 && PARTS.includes("current") && VARS.length !== ARCHIVE_VARS.length) {
+  console.error(
+    `--vars cannot be combined with the current part: it is written to a spare folder and\n` +
+      `promoted as a whole, so every variable must be written. Drop --vars.`
+  );
+  process.exit(1);
+}
+if (PARTS.includes("current")) {
+  console.log(`  current part: live in "${liveCurrentDir}", writing to "${DIR.current}"`);
 }
 
 // --- 3. Per-variable packing metadata, read from the header ---
@@ -697,11 +818,14 @@ for (let band = FROM_BAND; band < nBands; band++) {
 
           const bytes = Buffer.from(out.buffer, out.byteOffset, out.byteLength);
           blobs.push({
-            key: `${PREFIX}/${part}/${v.key}/0.${latChunk0 + ci}.${cj}`,
+            key: chunkKey(DIR[part], v.key, latChunk0 + ci, cj),
             body: zstdCompressSync(bytes, {
               params: { [zlibConstants.ZSTD_c_compressionLevel]: ZSTD_LEVEL },
             }),
-            opts: { cacheControl: CHUNK_CACHE },
+            // The current folders are reused on alternate refreshes, so their
+            // chunks must not be cached as immutable. The reader also puts the
+            // write time on the URL; this is the second line of defence.
+            opts: { cacheControl: part === "current" ? META_CACHE : CHUNK_CACHE },
           });
         }
       }
@@ -721,24 +845,107 @@ for (let band = FROM_BAND; band < nBands; band++) {
   }
 }
 
+/**
+ * --- 4b. Check 2: read the upload back before anything points at it ---
+ *
+ * Check 1 judged what Idaho sent. This judges what was actually STORED, read
+ * the way the site reads it: fetched from R2, decompressed, unpacked with the
+ * manifest's scale and offset. It catches a fault anywhere between download and
+ * disk — a transposition slip, a truncated upload, wrong packing — none of
+ * which check 1 can see.
+ *
+ * Samples 35 of the 340 chunks, spread across the state (missing the padded
+ * southern edge row, whose fill would skew the missing-data rule), and every
+ * 4th cell in each: ~560 cells, ~105 small downloads, a few seconds.
+ */
+const wholeGrid = MAX_BANDS >= Math.ceil(nLat / BAND_ROWS);
+if (r2 && PARTS.includes("current") && wholeGrid) {
+  const part: Part = "current";
+  const px = PART_CHUNK_PX[part];
+  const nDays = dayCount(RANGES.current.start, RANGES.current.end);
+  const fullLatChunks = Math.floor(nLat / px);
+  const nLonChunks = Math.ceil(nLon / px);
+  const picks: [number, number][] = [];
+  for (let ci = 1; ci < fullLatChunks; ci += 3) {
+    for (let cj = 1; cj < nLonChunks; cj += 3) picks.push([ci, cj]);
+  }
+  const cellsPerChunk = Math.ceil(px / 4) ** 2;
+  const cells = picks.length * cellsPerChunk;
+  const sample: PlausibilitySample = {
+    dates: Array.from({ length: nDays }, (_, i) => addDays(RANGES.current.start, i)),
+    tmax: new Array(nDays * cells).fill(null),
+    tmin: new Array(nDays * cells).fill(null),
+    precip: new Array(nDays * cells).fill(null),
+    cells,
+  };
+  const target: Record<string, (number | null)[]> = {
+    tmmx: sample.tmax,
+    tmmn: sample.tmin,
+    pr: sample.precip,
+  };
+
+  const problems: string[] = [];
+  await Promise.all(
+    picks.flatMap(([ci, cj], p) =>
+      Object.entries(target).map(async ([key, out]) => {
+        const where = `${DIR.current}/${key}/0.${ci}.${cj}`;
+        const stored = await getObject(r2!, chunkKey(DIR.current, key, ci, cj));
+        if (!stored) return void problems.push(`${where} is missing from the upload`);
+        let chunk: Int16Array;
+        try {
+          const flat = zstdDecompressSync(stored);
+          chunk = new Int16Array(flat.buffer, flat.byteOffset, flat.byteLength / 2);
+        } catch (e) {
+          return void problems.push(`${where} does not decompress (${String(e).slice(0, 60)})`);
+        }
+        if (chunk.length !== nDays * px * px) {
+          return void problems.push(
+            `${where} holds ${chunk.length / (px * px)} days, expected ${nDays}`
+          );
+        }
+        const vm = varMeta[key];
+        for (let t = 0; t < nDays; t++) {
+          let c = 0;
+          for (let la = 0; la < px; la += 4) {
+            for (let lo = 0; lo < px; lo += 4, c++) {
+              const raw = chunk[t * px * px + la * px + lo];
+              out[t * cells + p * cellsPerChunk + c] =
+                raw === vm.fillValue ? null : raw * vm.scaleFactor + vm.addOffset;
+            }
+          }
+        }
+      })
+    )
+  );
+
+  if (problems.length) {
+    await holdAndExit(problems.slice(0, 10), "The upload did not read back intact", needsBuildingFlag);
+  }
+  const judged = judge(`check 2 — the stored copy in "${DIR.current}"`, sample);
+  if (judged.length) {
+    await holdAndExit(judged, "The stored copy failed the plausibility check", needsBuildingFlag);
+  }
+  console.log(`  check 2 passed — promoting "${DIR.current}"`);
+}
+
 // --- 5. Zarr metadata and the manifest ---
 const meta: Blob[] = [{ key: `${PREFIX}/.zgroup`, body: json({ zarr_format: 2 }) }];
 
 for (const part of PARTS) {
   const nDays = dayCount(RANGES[part].start, RANGES[part].end);
   const px = PART_CHUNK_PX[part];
-  meta.push({ key: `${PREFIX}/${part}/.zgroup`, body: json({ zarr_format: 2 }) });
+  meta.push({ key: `${PREFIX}/${DIR[part]}/.zgroup`, body: json({ zarr_format: 2 }) });
 
   for (const v of VARS) {
     const vm = varMeta[v.key];
     meta.push({
-      key: `${PREFIX}/${part}/${v.key}/.zarray`,
+      key: `${PREFIX}/${DIR[part]}/${v.key}/.zarray`,
       body: json(zarray([nDays, nLat, nLon], [nDays, px, px], "<i2", vm.fillValue)),
     });
     // _ARRAY_DIMENSIONS is what lets xarray open this as a labelled dataset;
     // scale_factor/add_offset let it unpack the integers automatically.
     meta.push({
-      key: `${PREFIX}/${part}/${v.key}/.zattrs`,
+      key: `${PREFIX}/${DIR[part]}/${v.key}/.zattrs`,
       body: json({
         _ARRAY_DIMENSIONS: ["day", "lat", "lon"],
         scale_factor: vm.scaleFactor,
@@ -782,8 +989,21 @@ const manifest: Manifest = {
       ...RANGES.current,
       nDays: dayCount(RANGES.current.start, RANGES.current.end),
       ...stillWithheld("current"),
+      // Point the site at the folder just written and checked — or, when this
+      // run did not write the current part, leave it where it was.
+      ...(PARTS.includes("current")
+        ? { dir: DIR.current, writtenAt }
+        : {
+            ...(existing?.parts.current.dir ? { dir: existing.parts.current.dir } : {}),
+            ...(existing?.parts.current.writtenAt
+              ? { writtenAt: existing.parts.current.writtenAt }
+              : {}),
+          }),
     },
   },
+  // Publishing a checked current part ends any hold; a run that did not touch
+  // it has nothing to say about one.
+  ...(!PARTS.includes("current") && existing?.hold ? { hold: existing.hold } : {}),
   // A --vars run must not delete the variables it did not touch from the
   // manifest: the reader iterates this list, so a dropped entry silently
   // removes that variable from every lookup while its chunks sit there intact.
@@ -796,7 +1016,12 @@ const manifest: Manifest = {
  * `--out` runs are exempt — nothing reads those.
  */
 const partialRun = MAX_BANDS < Math.ceil(nLat / BAND_ROWS);
-if (partialRun && r2) {
+if (STAGE_ONLY) {
+  console.log(
+    `\n--stage-only: both checks passed on "${DIR.current}". The manifest was not touched, ` +
+      `so the site still reads "${liveCurrentDir}".`
+  );
+} else if (partialRun && r2) {
   console.log(
     `\nSTOPPING SHORT OF THE MANIFEST: --bands ${MAX_BANDS} wrote only part of the grid.\n` +
       `The chunks are uploaded, but the manifest is unchanged, so nothing serves them.\n` +

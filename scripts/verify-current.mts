@@ -30,6 +30,7 @@ import {
   chunkOf,
   extractSeries,
   chunkKey,
+  partDir,
   addDays,
   MANIFEST_KEY,
   type Manifest,
@@ -100,7 +101,9 @@ console.log(`built       ${m.builtAt}\n`);
 
 const fromArchive: Record<string, (number | null)[]> = {};
 for (const key of Object.keys(m.vars)) {
-  const res = await fetch(`${BASE}/${chunkKey("current", key, pos.latChunk, pos.lonChunk)}`);
+  const res = await fetch(
+    `${BASE}/${chunkKey(partDir(m, "current"), key, pos.latChunk, pos.lonChunk)}?v=${Date.now()}`
+  );
   if (!res.ok) throw new Error(`chunk for ${key}: ${res.status}`);
   const flat = zstdDecompressSync(Buffer.from(await res.arrayBuffer()));
   const chunk = new Int16Array(flat.buffer, flat.byteOffset, flat.byteLength / 2);

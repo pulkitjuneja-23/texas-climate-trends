@@ -1,0 +1,43 @@
+# Check that the WEBSITE is showing realistic weather.
+#
+# The refresh job checks the archive before publishing it. This checks the far
+# end: what a visitor is actually served, after Earth Engine, the cache, the
+# station top-up and the CDN have all had their turn. It asks the live site for
+# eight places spread across Texas and fails — which makes GitHub email — if the
+# current year looks impossible: no rain anywhere for weeks (the flat line of
+# 2026-09-17), highs barely above lows, a freezing summer, missing days, or a
+# record that has stopped moving.
+#
+# Thresholds were back-tested on 1996-2025 for the same eight places: the worst
+# real year came nowhere near any of them (longest shared dry spell 22 days
+# against an alarm at 45), while the broken copy of 2026-09-17 tripped all three
+# (237 dry days).
+#
+# It can only alert. A red run here means a person should look — see
+# scripts/check-live-site.mts for where.
+#
+# No secrets: it reads the public website like any visitor.
+
+name: Check website data
+
+on:
+  schedule:
+    # Once a day, early afternoon in Texas — after the morning's refreshes have
+    # had a chance to publish, and while someone is around to act on an email.
+    - cron: "40 18 * * *"
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Check the live site's numbers
+        run: node --experimental-strip-types scripts/check-live-site.mts

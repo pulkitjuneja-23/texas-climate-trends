@@ -21,6 +21,7 @@ import {
   chunkOf,
   extractSeries,
   chunkKey,
+  partDir,
   addDays,
   dayCount,
   MANIFEST_KEY,
@@ -129,8 +130,13 @@ async function readPart(
 
   const results = await Promise.all(
     varKeys.map(async (key) => {
+      // The current part's folders are reused on alternate days, so the write
+      // time goes on the URL: without it a cache could return the chunk that
+      // sat at this same key two refreshes ago. R2 ignores the query string.
+      const written = m.parts[part].writtenAt;
       const raw = (await get(
-        chunkKey(part, key, pos.latChunk, pos.lonChunk),
+        chunkKey(partDir(m, part), key, pos.latChunk, pos.lonChunk) +
+          (written ? `?v=${encodeURIComponent(written)}` : ""),
         "binary"
       )) as Buffer | null;
       if (!raw) return null;

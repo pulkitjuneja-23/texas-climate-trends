@@ -194,8 +194,43 @@ export interface Manifest {
        * lib/archive/plausibility.ts, and 2026-09-17 in CLAUDE.md.
        */
       withheld?: string;
+      /**
+       * Folder under `gridmet/` holding this part's chunks. Absent means the
+       * part's own name, which is where everything lived before staging.
+       *
+       * The current part alternates between `current` and `current-b`. A
+       * refresh writes the folder that is NOT live, reads its own upload back,
+       * and only then points this field at it. So the site never sees a copy
+       * that has not been checked, and a copy that fails leaves the previous
+       * good one serving untouched. See `hold` below.
+       */
+      dir?: string;
+      /**
+       * When this part's chunks were written. Appended to chunk URLs so a
+       * cache anywhere — Next, Cloudflare, a browser — cannot hand back the
+       * copy that lived in the same folder two days ago.
+       */
+      writtenAt?: string;
     }
   >;
+  /**
+   * Set while the refresh is refusing to promote new data, and why. The site
+   * keeps serving the last copy that passed; this is a record for the retries
+   * and for alerting, not something readers act on.
+   *
+   * The refresh retries every few hours and clears this when a copy passes.
+   * It only fails the GitHub run (which emails) once the hold has lasted a day,
+   * and then at most once a day, because a hold of a few hours is invisible to
+   * a visitor — the nearest station fills the most recent days regardless.
+   */
+  hold?: {
+    since: string;
+    lastTry: string;
+    lastAlert?: string;
+    reason: string;
+    /** Idaho's latest day at the last attempt. */
+    upstreamEnd: string;
+  };
   vars: Record<
     string,
     {
@@ -215,12 +250,12 @@ export const MANIFEST_KEY = "gridmet/manifest.json";
 /** Root prefix inside the bucket. */
 export const PREFIX = "gridmet";
 
-export function zarrayKey(part: Part, varName: string): string {
-  return `${PREFIX}/${part}/${varName}/.zarray`;
+export function zarrayKey(dir: string, varName: string): string {
+  return `${PREFIX}/${dir}/${varName}/.zarray`;
 }
 
-export function zattrsKey(part: Part, varName: string): string {
-  return `${PREFIX}/${part}/${varName}/.zattrs`;
+export function zattrsKey(dir: string, varName: string): string {
+  return `${PREFIX}/${dir}/${varName}/.zattrs`;
 }
 
 /**
@@ -228,9 +263,17 @@ export function zattrsKey(part: Part, varName: string): string {
  * order; the time index is always 0 because a chunk spans its part's whole time
  * axis.
  */
-export function chunkKey(part: Part, varName: string, latChunk: number, lonChunk: number): string {
-  return `${PREFIX}/${part}/${varName}/0.${latChunk}.${lonChunk}`;
+export function chunkKey(dir: string, varName: string, latChunk: number, lonChunk: number): string {
+  return `${PREFIX}/${dir}/${varName}/0.${latChunk}.${lonChunk}`;
 }
+
+/** The folder a part's chunks live in — see `dir` on the manifest. */
+export function partDir(m: Pick<Manifest, "parts">, part: Part): string {
+  return m.parts[part].dir ?? part;
+}
+
+/** The two folders the current part alternates between. */
+export const CURRENT_DIRS = ["current", "current-b"] as const;
 
 /** Where a point sits on the grid. Independent of how any part is chunked. */
 export interface CellIndex {

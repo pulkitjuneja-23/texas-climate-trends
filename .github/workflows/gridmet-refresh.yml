@@ -1,22 +1,33 @@
-# Keep the gridMET archive current.
+# Keep the gridMET archive current — and never publish a copy that looks wrong.
 #
-# Re-downloads this season's data from the University of Idaho every morning and
-# rewrites the "current" part of the Zarr store on R2. Without this the site's
-# fast path would slowly fall behind and every recent day would come from the
+# Re-downloads this season's data from the University of Idaho and rewrites the
+# "current" part of the Zarr store on R2. Without this the site's fast path
+# would slowly fall behind and every recent day would come from the
 # airport-station top-up instead.
 #
+# EVERY 3 HOURS, NOT DAILY (since 2026-09-17). Each run:
+#   1. exits in ~20 s with zero uploads if Idaho has nothing new and nothing is
+#      on hold — by far the commonest outcome;
+#   2. checks a statewide sample of Idaho's data for impossible weather;
+#   3. uploads to the SPARE folder (current / current-b), never the live one;
+#   4. reads its own upload back and checks it again;
+#   5. only then points the site at the new copy.
+# If 2 or 4 fails, it HOLDS: the site keeps the last good copy, the reason goes
+# in the manifest, and the next run three hours later tries again. That is the
+# answer to 2026-09-17, when Idaho served zero rain for Jan-Jul and a grower was
+# shown a flat line.
+#
+# WHEN IT EMAILS. A hold of a few hours is invisible on the site (the nearest
+# station fills the most recent days either way), so a held run stays GREEN
+# with a summary on the run page. It goes RED — which is what makes GitHub email
+# — only once a hold has lasted 24 hours, and then at most once a day.
+#
 # COST, measured against the live store (260 x 320 cells, 16x16 chunks):
-#   1,360 chunks + 11 metadata objects = 1,371 uploads per run
+#   1,360 chunks + 11 metadata objects = 1,371 uploads per publish
 #   ~41,700 uploads/month against Cloudflare's free 1,000,000 = about 4%
-# Storage does not grow: every object is overwritten in place.
-#
-# The job exits without uploading anything at all when Idaho's feed has not
-# advanced since the last run, which is common — it stalls for days at a time.
-#
-# A RED RUN SAYING "REFUSING TO PUBLISH" is the plausibility check working: Idaho
-# served impossible weather (as it did on 2026-09-17), nothing was uploaded, and
-# the current part is marked withheld so the site reads this year from Earth
-# Engine. The site stays correct. The next run that passes lifts it by itself.
+#   (publishes still happen about once a day — only when Idaho has a new day)
+#   Actions: ~8 short runs a day, roughly 100-150 minutes a month.
+# Storage does not grow: the two folders are overwritten alternately.
 #
 # NOTE ON THE 60-DAY RULE: GitHub disables scheduled workflows after 60 days of
 # no repository activity, but its documentation scopes that to PUBLIC
@@ -26,14 +37,15 @@
 # the Actions tab. Any push resets the clock. If the data ever looks stuck,
 # check this before suspecting a code fault.
 
-name: Refresh gridMET (daily)
+name: Refresh gridMET (every 3 hours, checked)
 
 on:
   schedule:
-    # 09:20 UTC — early morning in Texas, and a few hours after Idaho's own
-    # daily update lands. Deliberately not on the hour: GitHub queues the
-    # enormous number of jobs scheduled at :00, which can delay them by an hour.
-    - cron: "20 9 * * *"
+    # Every 3 hours at :20. Picks up Idaho's daily update within a few hours of
+    # it landing, and retries a held update without anyone doing anything.
+    # Deliberately not on the hour: GitHub queues the enormous number of jobs
+    # scheduled at :00, which can delay them by an hour.
+    - cron: "20 */3 * * *"
   workflow_dispatch:
     inputs:
       force:
