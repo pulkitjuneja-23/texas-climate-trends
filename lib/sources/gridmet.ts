@@ -1,7 +1,7 @@
 import type { DailyRecord, FetchOpts, WeatherSource, SourceMeta } from "@/lib/types";
 import { getEe, getRegionSeries } from "./earthengine";
 import { q } from "./precision";
-import { readArchivePoint } from "@/lib/archive/read";
+import { readArchivePoint, withheldFrom, type ArchivePoint } from "@/lib/archive/read";
 
 /**
  * gridMET (Abatzoglou, University of Idaho) — 4 km CONUS daily, via Earth Engine.
@@ -80,47 +80,14 @@ export async function fetchDaily(opts: FetchOpts): Promise<DailyRecord[]> {
    * few small downloads instead of a computation over 11,500 daily grids.
    *
    * It returns null for anything it cannot answer completely: outside Texas,
-   * earlier than the archive starts, or a chunk that failed to arrive. Every
-   * one of those falls through to Earth Engine below, so the archive can only
-   * make the site faster, never break it.
+   * earlier than the archive starts, a chunk that failed to arrive, or a part
+   * the refresh has withheld as implausible. Every one of those falls through
+   * to Earth Engine below, so the archive can only make the site faster, never
+   * break it.
    */
-  const archived = await readArchivePoint(opts.lat, opts.lon, opts.start, opts.end);
-  if (archived) {
-    return archived.dates.map((date, i) => {
-      // The archive stores Kelvin, as gridMET does. Rounded on the way out for
-      // the same reason as the Earth Engine path — see lib/sources/precision.ts.
-      const k2c = (v: number | null | undefined) => (v === null || v === undefined ? null : q(v - KELVIN));
-      const tmax = k2c(archived.values.tmmx?.[i]);
-      const tmin = k2c(archived.values.tmmn?.[i]);
-      return {
-        date,
-        tmax,
-        tmin,
-        tmean: tmax !== null && tmin !== null ? q((tmax + tmin) / 2) : null,
-        precip: q(archived.values.pr?.[i]),
-        origin: meta.id,
-      } satisfies DailyRecord;
-    });
-  }
-
-  const conn = await getEe();
-  if (!conn.ee) throw new Error(conn.error);
-
-  const rows = await getRegionSeries(
-    conn.ee,
-    COLLECTION,
-    BANDS,
-    opts.lat,
-    opts.lon,
-    opts.start,
-    // getRegion's end is exclusive; nudge so the final day is included.
-    shiftDay(opts.end, 1),
-    SCALE_M
-  );
-
-  return rows
-    .filter((r) => r.date >= opts.start && r.date <= opts.end)
-    .map((r) => {
+  return withArchive(opts, fromArchive, async (start, end) => {
+    const rows = await eeSeries(BANDS, opts.lat, opts.lon, start, end);
+    return rows.map((r) => {
       // Rounded because subtracting 273.15 invents digits: gridMET is stored at
       // 0.1 degC precision, but the raw subtraction yields 19.749993896484398.
       // See lib/sources/precision.ts.
@@ -135,6 +102,71 @@ export async function fetchDaily(opts: FetchOpts): Promise<DailyRecord[]> {
         origin: meta.id,
       } satisfies DailyRecord;
     });
+  });
+}
+
+/** One Earth Engine point series, trimmed to the inclusive date range. */
+async function eeSeries(bands: string[], lat: number, lon: number, start: string, end: string) {
+  const conn = await getEe();
+  if (!conn.ee) throw new Error(conn.error);
+
+  const rows = await getRegionSeries(
+    conn.ee,
+    COLLECTION,
+    bands,
+    lat,
+    lon,
+    start,
+    // getRegion's end is exclusive; nudge so the final day is included.
+    shiftDay(end, 1),
+    SCALE_M
+  );
+  return rows.filter((r) => r.date >= start && r.date <= end);
+}
+
+/**
+ * Serve from the archive, splitting at a withheld part rather than abandoning it.
+ *
+ * When the refresh has withheld this year's part (Idaho served impossible
+ * values), a request spanning 1996-today would otherwise decline as a whole and
+ * send all thirty-one years to Earth Engine. Splitting keeps the sealed years on
+ * the fast path and sends only the withheld stretch to Earth Engine.
+ */
+async function withArchive<T>(
+  opts: FetchOpts,
+  /** Null when the archive lacks what this caller needs — Earth Engine then serves it all. */
+  archive: (a: ArchivePoint) => T[] | null,
+  ee: (start: string, end: string) => Promise<T[]>
+): Promise<T[]> {
+  const whole = await readArchivePoint(opts.lat, opts.lon, opts.start, opts.end);
+  const served = whole && archive(whole);
+  if (served) return served;
+
+  const cut = await withheldFrom();
+  if (cut && cut > opts.start && cut <= opts.end) {
+    const older = await readArchivePoint(opts.lat, opts.lon, opts.start, shiftDay(cut, -1));
+    const olderRows = older && archive(older);
+    if (olderRows) return [...olderRows, ...(await ee(cut, opts.end))];
+  }
+  return ee(opts.start, opts.end);
+}
+
+function fromArchive(archived: ArchivePoint): DailyRecord[] {
+  return archived.dates.map((date, i) => {
+    // The archive stores Kelvin, as gridMET does. Rounded on the way out for
+    // the same reason as the Earth Engine path — see lib/sources/precision.ts.
+    const k2c = (v: number | null | undefined) => (v === null || v === undefined ? null : q(v - KELVIN));
+    const tmax = k2c(archived.values.tmmx?.[i]);
+    const tmin = k2c(archived.values.tmmn?.[i]);
+    return {
+      date,
+      tmax,
+      tmin,
+      tmean: tmax !== null && tmin !== null ? q((tmax + tmin) / 2) : null,
+      precip: q(archived.values.pr?.[i]),
+      origin: meta.id,
+    } satisfies DailyRecord;
+  });
 }
 
 function shiftDay(iso: string, days: number): string {
@@ -160,28 +192,15 @@ export interface DailyEto {
 export async function fetchReferenceEt(opts: FetchOpts): Promise<DailyEto[]> {
   // The archive carries reference ET in the same chunks as the weather, so this
   // costs no extra request when the point is covered.
-  const archived = await readArchivePoint(opts.lat, opts.lon, opts.start, opts.end);
-  if (archived?.values.pet) {
-    return archived.dates.map((date, i) => ({ date, eto: q(archived.values.pet[i]) }));
-  }
-
-  const conn = await getEe();
-  if (!conn.ee) throw new Error(conn.error);
-
-  const rows = await getRegionSeries(
-    conn.ee,
-    COLLECTION,
-    ["eto"],
-    opts.lat,
-    opts.lon,
-    opts.start,
-    shiftDay(opts.end, 1),
-    SCALE_M
+  return withArchive(
+    opts,
+    (a) => (a.values.pet ? a.dates.map((date, i) => ({ date, eto: q(a.values.pet[i]) })) : null),
+    async (start, end) =>
+      (await eeSeries(["eto"], opts.lat, opts.lon, start, end)).map((r) => ({
+        date: r.date,
+        eto: q(r.values.eto),
+      }))
   );
-
-  return rows
-    .filter((r) => r.date >= opts.start && r.date <= opts.end)
-    .map((r) => ({ date: r.date, eto: q(r.values.eto) }));
 }
 
 const source: WeatherSource = { meta, fetchDaily };

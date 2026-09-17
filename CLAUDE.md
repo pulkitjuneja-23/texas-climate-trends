@@ -1783,6 +1783,56 @@ Verified: 14/14 counties resolved correctly and correctly null outside Texas;
 the flag sets, persists and clears; malformed bodies all return 204; localhost
 fires no beacon.
 
+### 2026-09-17 — Idaho served a broken 2026; gridMET rainfall flat at zero statewide
+
+**User report: cumulative rainfall for 2026 was a flat line at every Texas location on gridMET.**
+
+**Cause: upstream, not our code.** The University of Idaho's own 2026 files (`pr_2026.nc`,
+`tmmx_2026.nc`, and the `agg_met_*_CurrentYear` aggregations over them) began serving
+**January–July 2026 as nonsense**: zero rain in every cell on every day, July highs of −3 °C, and a
+daily high only ~1.5 °C above the low. August onward was fine. The time axis, shape and coordinates
+were all correct, so every existing ingest check passed, and the 14:19 UTC refresh on 17 Sep
+overwrote a good current part with it in 77 s. The 16 Sep run was healthy. Earth Engine's copy of
+gridMET was unaffected (`verify-current.mts` showed the archive, not EE, was wrong this time).
+
+**The tell in the refresh log:** rainfall compressed to "0% of source" instead of ~12%. An all-zero
+variable compresses to nothing.
+
+**Fix, three parts:**
+1. **`lib/archive/plausibility.ts`** — before uploading anything the refresh takes a 1-in-8
+   statewide sample (~1 MB/variable, a few seconds) and rejects any month that is physically
+   impossible. Thresholds sit deep inside the measured gap:
+
+   | monthly, ~1,000 land cells | healthy 2025 | broken 2026 Jan–Jul |
+   |---|---|---|
+   | mean daily range | 12.4–17.0 K | 1.1–2.2 K |
+   | cell-days ≥ 1 mm rain | 4.9–30.5 % | 0.0–0.7 % |
+   | mean high, Jun–Aug | 32–34 °C | 0–1 °C |
+
+   Deliberately coarse: it catches a broken FILE, not an extreme season. A false alarm would
+   withhold real data in exactly the year a grower most wants to see. It does not catch one bad day.
+2. **`parts.current.withheld`** in the manifest. On failure nothing is uploaded, the live manifest
+   is republished with the reason, and the run exits 1 (GitHub emails). The reader declines anything
+   touching a withheld part. Unlike `building`, the other part stays in service: `gridmet.ts`
+   `withArchive` **splits** the request, so 1996–2025 still come from the archive and only 2026
+   goes to Earth Engine. Verified cold, no cache: 31 years in 11 s, no duplicate dates at the seam.
+   The next refresh whose download passes the check, rewriting all variables, clears the flag.
+3. **The check runs BEFORE the "nothing new upstream" exit.** The bad copy was already stored and
+   Idaho's latest date had not moved, so a check placed after that exit would have looked at
+   nothing. A withheld part is also never "already current".
+
+`--allow-implausible` overrides, for use only after checking the data by hand. A rollover also
+checks the year being sealed, because nothing ever rewrites the archive part afterwards.
+
+**Cache:** the 3 h Supabase TTL on the in-progress year would have kept the flat line on screen for
+hours after the fix, so the `hist:gridmet:*:2026` entries were purged after deploying. Purge AFTER
+the deploy, not before: the old code ignores `withheld` and would re-cache the bad chunks.
+
+**If the refresh goes red with "REFUSING TO PUBLISH":** the site is still correct, just a few seconds
+slower on the current year. Check whether Idaho has repaired its file (`scripts/verify-current.mts`
+compares against Earth Engine). No action is needed once Idaho fixes it; the next daily run lifts
+the flag by itself.
+
 ## Next up
 
 Items 1, 4 and 7 of the original list are done (gridMET as a source, OpenET, shipped to Vercel).

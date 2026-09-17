@@ -13,6 +13,11 @@
 # The job exits without uploading anything at all when Idaho's feed has not
 # advanced since the last run, which is common — it stalls for days at a time.
 #
+# A RED RUN SAYING "REFUSING TO PUBLISH" is the plausibility check working: Idaho
+# served impossible weather (as it did on 2026-09-17), nothing was uploaded, and
+# the current part is marked withheld so the site reads this year from Earth
+# Engine. The site stays correct. The next run that passes lifts it by itself.
+#
 # NOTE ON THE 60-DAY RULE: GitHub disables scheduled workflows after 60 days of
 # no repository activity, but its documentation scopes that to PUBLIC
 # repositories, and this one is private — so it should not apply. Community

@@ -180,6 +180,20 @@ export interface Manifest {
       start: string;
       end: string;
       nDays: number;
+      /**
+       * Set when the refresh found Idaho serving physically impossible values
+       * for this part and refused to publish them. The reason, in words.
+       *
+       * The chunks on disk may be the bad ones — they were written by an
+       * earlier run before the check existed, or by the run that first saw the
+       * fault — so readers must decline anything overlapping a withheld part.
+       * Unlike `building`, the OTHER part stays in service, so one bad
+       * upstream year costs Earth Engine lookups for that year only.
+       *
+       * Cleared by the next refresh whose download passes the check. See
+       * lib/archive/plausibility.ts, and 2026-09-17 in CLAUDE.md.
+       */
+      withheld?: string;
     }
   >;
   vars: Record<

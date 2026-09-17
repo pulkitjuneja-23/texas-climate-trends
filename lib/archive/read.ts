@@ -193,6 +193,15 @@ export async function readArchivePoint(
   });
   if (!wanted.length) return null;
 
+  // The refresh caught Idaho serving impossible values for this part and
+  // refused to vouch for its chunks. Serving them anyway is exactly how a whole
+  // season of zero rainfall reached every location in Texas on 2026-09-17.
+  const withheld = wanted.find((p) => m.parts[p].withheld);
+  if (withheld) {
+    console.warn(`[archive] ${withheld} part withheld (${m.parts[withheld].withheld}) — declining`);
+    return null;
+  }
+
   const fetched = await Promise.all(wanted.map((p) => readPart(m, p, cell, varKeys)));
   // A missing chunk in any needed part means an incomplete series, which would
   // read as a drought that never happened. Decline the whole thing.
@@ -241,10 +250,28 @@ export async function archiveCovers(lat: number, lon: number, start: string): Pr
   return locate(m, lat, lon) !== null;
 }
 
+/**
+ * The first date the archive will NOT serve because the current part is
+ * withheld, or null when nothing is withheld.
+ *
+ * Lets a caller split a long request: the thirty sealed years still come from
+ * the archive in under two seconds, and only the withheld stretch goes to Earth
+ * Engine. Without the split, one bad upstream year would turn every cold lookup
+ * back into a 18-82 s Earth Engine query for all thirty-one years.
+ */
+export async function withheldFrom(): Promise<string | null> {
+  const m = await getManifest();
+  if (!m) return null;
+  if (m.parts.archive.withheld) return m.parts.archive.start;
+  if (m.parts.current.withheld) return m.parts.current.start;
+  return null;
+}
+
 /** How far behind the archive is, for the UI to report honestly. */
 export async function archiveLagDays(): Promise<number | null> {
   const m = await getManifest();
   if (!m) return null;
   const today = new Date().toISOString().slice(0, 10);
-  return dayCount(m.parts.current.end, today) - 1;
+  const servedThrough = m.parts.current.withheld ? m.parts.archive.end : m.parts.current.end;
+  return dayCount(servedThrough, today) - 1;
 }

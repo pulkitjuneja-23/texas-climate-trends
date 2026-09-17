@@ -21,6 +21,8 @@
  *   --vars a,b   only these variables (default: all four)
  *   --start YYYY first year of the archive (default 1995)
  *   --force      refresh even if the archive is already up to date
+ *   --allow-implausible
+ *                publish even when the plausibility check fails (see step 2b)
  *
  * THE TWO SCHEDULED JOBS (see .github/workflows/)
  *   daily   --r2 --part current   ~1,371 uploads, a few minutes
@@ -63,6 +65,7 @@ import {
   type Part,
 } from "../lib/archive/layout.ts";
 import { r2ConfigFromEnv, putMany, getObject, type R2Config } from "../lib/archive/r2.ts";
+import { monthlyStats, implausibleMonths } from "../lib/archive/plausibility.ts";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -100,6 +103,8 @@ const FROM_BAND = Number(arg("from-band") ?? 0);
 const ONLY_VARS = arg("vars")?.split(",");
 const START_YEAR = Number(arg("start") ?? 1995);
 const FORCE = flag("force");
+/** Publish even if the plausibility check fails. Only after checking the data by hand. */
+const ALLOW_IMPLAUSIBLE = flag("allow-implausible");
 
 if (!OUT_DIR && !TO_R2) {
   console.error("Choose an output: --out <dir> for a local trial, or --r2 to upload.");
@@ -188,7 +193,9 @@ async function fetchSlab(
   v: { file: string; grid: string },
   bbox: { north: number; south: number; west: number; east: number },
   start: string,
-  end: string
+  end: string,
+  /** Take every Nth cell — for a cheap statewide sample, not for the archive. */
+  horizStride = 1
 ): Promise<Buffer> {
   const qs = new URLSearchParams({
     var: v.grid,
@@ -201,6 +208,7 @@ async function fetchSlab(
     // NOT netcdf4 — that returns "NetCDF: HDF error" from this server.
     accept: "netcdf",
   });
+  if (horizStride > 1) qs.set("horizStride", String(horizStride));
 
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -355,24 +363,6 @@ if (RANGES.current.start > RANGES.current.end) {
   );
 }
 
-/**
- * Nothing new upstream — stop before spending a single upload.
- *
- * Idaho's feed stalls for days at a time, and a scheduled job that rewrites
- * 1,371 identical objects each time it does is pure waste against the free
- * allowance. Only applies to a plain refresh; an explicit rebuild always runs.
- */
-if (!rebuildingArchive && existing && !FORCE) {
-  const c = existing.parts.current;
-  if (c.end === RANGES.current.end && c.start === RANGES.current.start) {
-    console.log(
-      `\nAlready current: gridMET's latest day is ${latest} and the archive already holds it.\n` +
-        `Nothing uploaded. Use --force to refresh anyway.`
-    );
-    process.exit(0);
-  }
-}
-
 for (const p of PARTS) {
   console.log(
     `  ${p}: ${RANGES[p].start} -> ${RANGES[p].end}  (${dayCount(RANGES[p].start, RANGES[p].end)} days)`
@@ -383,6 +373,135 @@ if (rebuildingArchive) {
     `  rollover: years settle in month ${ARCHIVE_ROLLOVER_MONTH}, so the archive seals through ` +
       `${settledThroughYear(today)}`
   );
+}
+
+/**
+ * --- 2b. Refuse to publish impossible weather ---
+ *
+ * On 2026-09-17 Idaho's own 2026 files began serving January-July as zero rain
+ * everywhere and July highs below freezing. Every shape, coordinate and date was
+ * right, so every existing check passed, and the refresh overwrote a good season
+ * with that in 77 seconds. See lib/archive/plausibility.ts for the rules and
+ * the measurements behind them.
+ *
+ * A 1-in-8 statewide sample of the range about to be written: about 1 MB per
+ * variable and a few seconds. When rebuilding the archive, the year being
+ * sealed is included too, because once sealed nothing ever rewrites it.
+ *
+ * On failure NOTHING is uploaded, and the live manifest is republished with the
+ * current part marked `withheld`, so the site stops serving whatever those
+ * chunks hold — possibly an earlier bad copy — and reads this year from Earth
+ * Engine instead. The run then exits non-zero so GitHub emails the owner.
+ *
+ * Runs BEFORE the "nothing new upstream" exit, deliberately. The bad copy of
+ * 2026-09-17 was already stored when this check was written, and Idaho's latest
+ * date had not moved — so a check placed after that exit would have looked at
+ * nothing and left the flat line on the site.
+ */
+{
+  const checkStart = rebuildingArchive
+    ? `${archiveEnd.slice(0, 4)}-01-01`
+    : RANGES.current.start;
+  const checkEnd = RANGES.current.end;
+  const STRIDE = 8;
+
+  const sampleOf = async (key: string) => {
+    const v = ARCHIVE_VARS.find((x) => x.key === key)!;
+    const nc = parseNetCDF3(await fetchSlab(v, BBOX, checkStart, checkEnd, STRIDE));
+    const dv = dataVariable(nc);
+    const scale = Number(dv.attrs.scale_factor ?? 1);
+    const offset = Number(dv.attrs.add_offset ?? 0);
+    const fill = Number(dv.attrs._FillValue ?? 32767);
+    const raw = readShorts(nc, dv.name);
+    const values = Array.from(raw, (r) => (r === fill ? null : r * scale + offset));
+    return { values, days: dv.shape[0], cells: dv.shape[1] * dv.shape[2] };
+  };
+
+  const [tx, tn, pr] = await Promise.all(["tmmx", "tmmn", "pr"].map(sampleOf));
+  const nCheckDays = dayCount(checkStart, checkEnd);
+  if ([tx, tn, pr].some((s) => s.days !== nCheckDays || s.cells !== tx.cells)) {
+    throw new Error(
+      `Plausibility sample came back misshapen: expected ${nCheckDays} days, got ` +
+        `${tx.days}/${tn.days}/${pr.days} with ${tx.cells}/${tn.cells}/${pr.cells} cells`
+    );
+  }
+
+  const stats = monthlyStats({
+    dates: Array.from({ length: nCheckDays }, (_, i) => addDays(checkStart, i)),
+    tmax: tx.values,
+    tmin: tn.values,
+    precip: pr.values,
+    cells: tx.cells,
+  });
+  console.log(`  plausibility check ${checkStart} -> ${checkEnd} (${tx.cells} sampled cells):`);
+  for (const s of stats) {
+    console.log(
+      `    ${s.month}  range ${s.meanRangeK.toFixed(1)} K  high ${s.meanTmaxC.toFixed(1)} degC  ` +
+        `wet ${(s.wetShare * 100).toFixed(1)}%  missing ${(s.fillShare * 100).toFixed(0)}%`
+    );
+  }
+
+  const problems = implausibleMonths(stats);
+  if (problems.length && ALLOW_IMPLAUSIBLE) {
+    console.log(`\n  PUBLISHING DESPITE ${problems.length} FAILED CHECKS (--allow-implausible):`);
+    for (const p of problems) console.log(`    ${p}`);
+  } else if (problems.length) {
+    const reason = `Idaho served implausible values (${problems[0]}${
+      problems.length > 1 ? `, and ${problems.length - 1} more` : ""
+    })`;
+    console.error(`\nREFUSING TO PUBLISH — the University of Idaho is serving impossible weather:`);
+    for (const p of problems) console.error(`  ${p}`);
+
+    if (r2 && existing && !existing.building) {
+      const withheldManifest: Manifest = {
+        ...existing,
+        builtAt: new Date().toISOString(),
+        parts: {
+          ...existing.parts,
+          current: { ...existing.parts.current, withheld: reason },
+        },
+      };
+      await flush(
+        [
+          {
+            key: MANIFEST_KEY,
+            body: json(withheldManifest),
+            opts: { contentType: "application/json", cacheControl: META_CACHE },
+          },
+        ],
+        "current part withheld"
+      );
+      console.error(
+        `\nNothing was uploaded. The current part (${existing.parts.current.start} -> ` +
+          `${existing.parts.current.end}) is now WITHHELD, so the site reads it from Earth Engine:\n` +
+          `correct, a few seconds slower. The next refresh that passes this check lifts it.\n` +
+          `If Idaho's data is genuinely right, re-run with --allow-implausible.`
+      );
+    } else {
+      console.error(`\nNothing was uploaded and the manifest was left alone.`);
+    }
+    process.exit(1);
+  }
+}
+
+/**
+ * Nothing new upstream — stop before spending a single upload.
+ *
+ * Idaho's feed stalls for days at a time, and a scheduled job that rewrites
+ * 1,371 identical objects each time it does is pure waste against the free
+ * allowance. Only applies to a plain refresh; an explicit rebuild always runs.
+ */
+if (!rebuildingArchive && existing && !FORCE) {
+  const c = existing.parts.current;
+  // A withheld part is never "already current": Idaho may have repaired the
+  // file without advancing its latest date, and only a full rewrite clears it.
+  if (c.end === RANGES.current.end && c.start === RANGES.current.start && !c.withheld) {
+    console.log(
+      `\nAlready current: gridMET's latest day is ${latest} and the archive already holds it.\n` +
+        `Nothing uploaded. Use --force to refresh anyway.`
+    );
+    process.exit(0);
+  }
 }
 
 // --- 3. Per-variable packing metadata, read from the header ---
@@ -632,6 +751,18 @@ for (const part of PARTS) {
   }
 }
 
+/**
+ * A withheld part is cleared only by a run that rewrote ALL of it. A
+ * `--part archive` run leaves the current chunks as they were, and a `--vars pr`
+ * run leaves the temperature chunks as they were — either may still be the bad
+ * copy, so neither may vouch for the part.
+ */
+function stillWithheld(part: Part): { withheld?: string } {
+  const reason = existing?.parts[part]?.withheld;
+  const rewroteWhole = PARTS.includes(part) && VARS.length === ARCHIVE_VARS.length;
+  return reason && !rewroteWhole ? { withheld: reason } : {};
+}
+
 const manifest: Manifest = {
   version: MANIFEST_VERSION,
   builtAt: new Date().toISOString(),
@@ -642,8 +773,16 @@ const manifest: Manifest = {
   nLat,
   nLon,
   parts: {
-    archive: { ...RANGES.archive, nDays: dayCount(RANGES.archive.start, RANGES.archive.end) },
-    current: { ...RANGES.current, nDays: dayCount(RANGES.current.start, RANGES.current.end) },
+    archive: {
+      ...RANGES.archive,
+      nDays: dayCount(RANGES.archive.start, RANGES.archive.end),
+      ...stillWithheld("archive"),
+    },
+    current: {
+      ...RANGES.current,
+      nDays: dayCount(RANGES.current.start, RANGES.current.end),
+      ...stillWithheld("current"),
+    },
   },
   // A --vars run must not delete the variables it did not touch from the
   // manifest: the reader iterates this list, so a dropped entry silently
