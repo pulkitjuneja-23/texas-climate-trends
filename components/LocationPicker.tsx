@@ -30,6 +30,8 @@ interface Props {
   gddPresetKey?: string;
   gddPresets?: Record<string, { label: string; short: string }>;
   onGddPresetChange?: (key: string) => void;
+  /** Extra controls beside the crop selector — the custom base temperature. */
+  gddExtra?: React.ReactNode;
   /**
    * The real instrument supplying the most recent days.
    *
@@ -54,6 +56,7 @@ export default function LocationPicker({
   gddPresetKey,
   gddPresets,
   onGddPresetChange,
+  gddExtra,
   station = null,
 }: Props) {
   const [mode, setMode] = useState<Mode>("search");
@@ -248,6 +251,7 @@ export default function LocationPicker({
                 </option>
               ))}
             </select>
+            {gddExtra}
           </div>
         )}
       </div>

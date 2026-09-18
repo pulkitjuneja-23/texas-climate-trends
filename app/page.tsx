@@ -6,7 +6,7 @@ import type { DailyRecord, Place, SourceMeta, TaggedRecord } from "@/lib/types";
 // and the Earth Engine ones use Node APIs that cannot be bundled for a browser.
 import { DEFAULT_SOURCE_ID, HISTORY_START_YEAR } from "@/lib/sources/defaults";
 import { DEFAULT_PLACE, inTexas } from "@/lib/geo";
-import { GDD_PRESETS, plantingStart } from "@/lib/agro/gdd";
+import { GDD_PRESETS, plantingStart, CUSTOM_GDD_DEFAULT } from "@/lib/agro/gdd";
 import {
   alignByYear,
   accumulate,
@@ -26,6 +26,7 @@ import type { MonthlyEt } from "@/lib/sources/openet";
 // The TYPE only — `lib/yield/read` touches process.env and must stay server-side.
 import type { CountyYields } from "@/lib/yield/types";
 import LocationPicker from "@/components/LocationPicker";
+import GddBaseInput from "@/components/GddBaseInput";
 import SourceSelect from "@/components/SourceSelect";
 import ClimateChart, { type ViewMode } from "@/components/ClimateChart";
 import AnnualTrendChart from "@/components/AnnualTrendChart";
@@ -135,6 +136,16 @@ export default function Page() {
   const [trendField, setTrendField] = useState<Field>("precip");
   const [compareYears, setCompareYears] = useState<number[]>([]);
   /**
+   * Which slice of the calendar the season chart draws, as MM-DD.
+   *
+   * Lifted here rather than kept inside the chart for the same reason `field`
+   * and `mode` are: the chart element is built once and mounted under whichever
+   * panel is open, so state living inside it would reset every time the reader
+   * moved between the season and similar-years panels.
+   */
+  const [chartFrom, setChartFrom] = useState("01-01");
+  const [chartTo, setChartTo] = useState("12-31");
+  /**
    * Which deep view is open. Season tracker first: it answers the question the
    * tool exists for, and it is the one a returning grower opens most.
    */
@@ -175,24 +186,38 @@ export default function Page() {
   const outsideTexas = !inTexas(place.lat, place.lon);
 
   const currentYear = new Date().getFullYear();
-  // "Since" dates for the season-to-date tiles. Default 1 Jan, but a grower
-  // usually cares about accumulation since planting, not since New Year.
-  const [rainSince, setRainSince] = useState(`${currentYear}-01-01`);
+
   /**
-   * GDD starts at the crop's planting date, not 1 January.
+   * ONE DATE RANGE FOR THE WHOLE "SEASON SO FAR" CARD.
    *
-   * Heat units counted from New Year are meaningless — at Beeville that read
-   * 5,706 degF-days for corn by late August, roughly two crops' worth. The
-   * default follows the selected crop until the grower sets their own date,
-   * after which it stays put: their planting date is a fact about their field,
-   * not something a crop change should overwrite.
+   * Rain, growing degree days, estimated ET and the water balance used to
+   * carry three separate date pickers, so answering "how has this crop done
+   * since I planted" meant setting the same date three times — and the
+   * balance tile could end up summing a rainfall window that did not match its
+   * own ET window, which makes the subtraction quietly meaningless.
+   *
+   * They are four views of one season, so they take one window. The start
+   * still follows the crop's planting date until the grower sets their own,
+   * for the reason below; the end now exists at all, so a finished season can
+   * be read back rather than only the year to date.
+   *
+   * WHY THE START FOLLOWS THE CROP. Heat units counted from New Year are
+   * meaningless — at Beeville that read 5,706 degF-days for corn by late
+   * August, roughly two crops' worth. Once the grower picks a date it stays
+   * put: their planting date is a fact about their field, not something a crop
+   * change should overwrite. Rain and ET since planting are the right
+   * comparison too, which is why sharing the date improves them rather than
+   * compromising them.
    */
-  const [gddSince, setGddSince] = useState(() =>
-    plantingStart("corn", currentYear, null)
-  );
-  const [gddSinceTouched, setGddSinceTouched] = useState(false);
-  /** ET and deficit share one date — they are two halves of the same sum. */
-  const [etSince, setEtSince] = useState(`${currentYear}-01-01`);
+  const [seasonFrom, setSeasonFrom] = useState(() => plantingStart("corn", currentYear, null));
+  const [seasonFromTouched, setSeasonFromTouched] = useState(false);
+  /**
+   * Null means "up to the newest day there is", which is what almost everyone
+   * wants and what this card did before an end date existed. It is resolved
+   * against `lastObserved` at read time rather than stored, so it keeps up as
+   * new days arrive instead of freezing on whatever was current at first load.
+   */
+  const [seasonTo, setSeasonTo] = useState<string | null>(null);
 
   const [history, setHistory] = useState<HistoryPayload | null>(null);
   const [sourceList, setSourceList] = useState<SourceMeta[]>([]);
@@ -205,7 +230,52 @@ export default function Page() {
   const [water, setWater] = useState<EtPayload | null>(null);
   const [waterLoading, setWaterLoading] = useState(true);
 
-  const gddConfig = GDD_PRESETS[gddPreset].config;
+  /**
+   * The grower's own base temperature, held in degC like everything internal.
+   *
+   * Stored in Celsius and converted only at the input, the same rule the rest
+   * of the app follows — a base kept in whatever unit happened to be on screen
+   * would silently change meaning the moment somebody flipped the toggle.
+   */
+  const [customBase, setCustomBase] = useState(CUSTOM_GDD_DEFAULT.base);
+  const [customCap, setCustomCap] = useState<number | null>(null);
+
+  const gddConfig = useMemo(() => {
+    if (gddPreset !== "custom") return GDD_PRESETS[gddPreset].config;
+    // A cap is what separates the two methods, so offering the cap and a
+    // method toggle separately would let the reader pick a contradiction.
+    return customCap === null
+      ? { base: customBase, cutoff: 100, method: "simple" as const }
+      : { base: customBase, cutoff: customCap, method: "modified" as const };
+  }, [gddPreset, customBase, customCap]);
+
+  /** A base temperature as the reader has chosen to see temperatures. */
+  const showTemp = useCallback(
+    (degC: number) =>
+      `${Math.round(convert(degC, "temp", units))}${unitLabel("temp", units)}`,
+    [units]
+  );
+
+  /** What to call the current setting wherever GDD is shown. */
+  const gddShort =
+    gddPreset === "custom" ? `base ${showTemp(customBase)}` : GDD_PRESETS[gddPreset].short;
+
+  /**
+   * Built once here and handed to both places the crop selector appears.
+   *
+   * The alternative was five more props on each of two components for a
+   * control that only one setting ever uses.
+   */
+  const gddCustomControls =
+    gddPreset === "custom" ? (
+      <GddBaseInput
+        units={units}
+        baseC={customBase}
+        capC={customCap}
+        onBaseChange={setCustomBase}
+        onCapChange={setCustomCap}
+      />
+    ) : null;
 
   /**
    * Follow the crop's planting date until the grower overrides it.
@@ -215,10 +285,10 @@ export default function Page() {
    * year and falls back to 1 January.
    */
   useEffect(() => {
-    if (gddSinceTouched) return;
+    if (seasonFromTouched) return;
     const next = plantingStart(gddPreset, currentYear, history?.lastObserved ?? null);
-    setGddSince((prev) => (prev === next ? prev : next));
-  }, [gddPreset, currentYear, history?.lastObserved, gddSinceTouched]);
+    setSeasonFrom((prev) => (prev === next ? prev : next));
+  }, [gddPreset, currentYear, history?.lastObserved, seasonFromTouched]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -546,11 +616,23 @@ export default function Page() {
    * the same window averaged across all prior years for comparison.
    */
   const makeStat = useCallback(
-    (f: Field, sinceISO: string) => {
+    (f: Field, sinceISO: string, untilISO: string | null) => {
       if (!records.length || !history?.lastObserved) return null;
-      const endIdx = KEY_INDEX.get(history.lastObserved.slice(5, 10));
+      const observedIdx = KEY_INDEX.get(history.lastObserved.slice(5, 10));
       const startIdx = KEY_INDEX.get(sinceISO.slice(5, 10));
-      if (endIdx === undefined || startIdx === undefined) return null;
+      if (observedIdx === undefined || startIdx === undefined) return null;
+
+      /**
+       * The window never runs past the last day there is data for.
+       *
+       * A chosen end date in the future is not an error to refuse — a grower
+       * setting their whole season up front will naturally pick a harvest date
+       * that has not arrived. It just means "as far as you can get", so it is
+       * clamped, and the tile's existing `stale` flag already tells the reader
+       * where the numbers actually stop.
+       */
+      const chosenIdx = untilISO ? KEY_INDEX.get(untilISO.slice(5, 10)) : undefined;
+      const endIdx = chosenIdx === undefined ? observedIdx : Math.min(chosenIdx, observedIdx);
       if (startIdx > endIdx) return null;
 
       const series = alignByYear(records, f, gddConfig);
@@ -651,15 +733,27 @@ export default function Page() {
     [records, history?.lastObserved, gddConfig, currentYear]
   );
 
-  const rainStat = useMemo(() => makeStat("precip", rainSince), [makeStat, rainSince]);
-  const gddStat = useMemo(() => makeStat("gdd", gddSince), [makeStat, gddSince]);
+  const rainStat = useMemo(
+    () => makeStat("precip", seasonFrom, seasonTo),
+    [makeStat, seasonFrom, seasonTo]
+  );
+  const gddStat = useMemo(
+    () => makeStat("gdd", seasonFrom, seasonTo),
+    [makeStat, seasonFrom, seasonTo]
+  );
   /**
    * "Estimated" is the honest word: OpenET publishes one figure per month, and
    * these tiles divide it across the month's days to line up with an arbitrary
    * start date. Accurate to the month, interpolated within it.
    */
-  const etStat = useMemo(() => makeStat("et", etSince), [makeStat, etSince]);
-  const balanceStat = useMemo(() => makeStat("balance", etSince), [makeStat, etSince]);
+  const etStat = useMemo(
+    () => makeStat("et", seasonFrom, seasonTo),
+    [makeStat, seasonFrom, seasonTo]
+  );
+  const balanceStat = useMemo(
+    () => makeStat("balance", seasonFrom, seasonTo),
+    [makeStat, seasonFrom, seasonTo]
+  );
 
   /**
    * Last seven days at a glance. Costs nothing — it reads the tail of the
@@ -772,9 +866,28 @@ export default function Page() {
 
   /** The range a truncated water tile actually covers, honouring the chosen start date. */
   const etRangeLabel = useCallback(
-    (idx: number | undefined) => `${monthDay(etSince.slice(5))} – ${throughLabel(idx)} only`,
-    [monthDay, throughLabel, etSince]
+    (idx: number | undefined) => `${monthDay(seasonFrom.slice(5))} – ${throughLabel(idx)} only`,
+    [monthDay, throughLabel, seasonFrom]
   );
+
+  /**
+   * The window every tile in the card is describing, written out once.
+   *
+   * It moved into the card heading because the four tiles now share it —
+   * repeating "since Mar 1" on each was what made three separate pickers look
+   * reasonable in the first place.
+   */
+  const seasonRangeLabel = useMemo(() => {
+    const from = monthDay(seasonFrom.slice(5));
+    const observed = history?.lastObserved ?? null;
+    // Null means "to the newest day", and so does an end date that has not
+    // arrived — in both cases the honest label is the last day with data.
+    const effectiveTo =
+      seasonTo && observed && seasonTo < observed ? seasonTo : observed;
+    const to = effectiveTo ? monthDay(effectiveTo.slice(5, 10)) : null;
+    if (!from || !to) return null;
+    return `${from} – ${to}`;
+  }, [monthDay, seasonFrom, seasonTo, history?.lastObserved]);
 
   const precipDp = units === "imperial" ? 1 : 0;
 
@@ -808,6 +921,13 @@ export default function Page() {
       gddPresetKey={gddPreset}
       gddPresets={GDD_PRESETS}
       onGddPresetChange={(k) => setGddPreset(k as keyof typeof GDD_PRESETS)}
+      gddExtra={gddCustomControls}
+      rangeFrom={chartFrom}
+      rangeTo={chartTo}
+      onRangeChange={(f, t) => {
+        setChartFrom(f);
+        setChartTo(t);
+      }}
       waterStatus={{
         loading: waterLoading,
         available: dailyEt.size > 0,
@@ -913,6 +1033,7 @@ export default function Page() {
               gddPresetKey={gddPreset}
               gddPresets={GDD_PRESETS}
               onGddPresetChange={(k) => setGddPreset(k as keyof typeof GDD_PRESETS)}
+              gddExtra={gddCustomControls}
             />
             {/*
               Provenance for this point, under the map: where the pin is on the
@@ -966,9 +1087,60 @@ export default function Page() {
                 <h2>Season so far</h2>
                 {/* The source badge is gone from here: the picker is now fixed
                     to the top of the window, so the active source is on screen
-                    at all times and repeating it was clutter. */}
-                {history?.lastObserved && (
-                  <span className="badge">through {formatDate(history.lastObserved)}</span>
+                    at all times and repeating it was clutter. The badge now
+                    carries the window all four tiles share, which is the thing
+                    that changed and the thing they all depend on. */}
+                {seasonRangeLabel && <span className="badge">{seasonRangeLabel}</span>}
+              </div>
+
+              {/*
+                ONE RANGE FOR THE CARD, set here rather than four times below.
+
+                "To" is allowed to be empty, and empty is the default: it means
+                "up to the newest day there is", which is what this card always
+                did and what almost everyone wants. Making the reader pick an
+                end date to get the ordinary behaviour would be a worse default
+                than having no end date at all.
+              */}
+              <div className="season-range">
+                <label>
+                  <span>From</span>
+                  <input
+                    type="date"
+                    aria-label="Season window start"
+                    value={seasonFrom}
+                    min={`${currentYear}-01-01`}
+                    max={seasonTo ?? `${currentYear}-12-31`}
+                    onChange={(e) => {
+                      setSeasonFrom(e.target.value);
+                      setSeasonFromTouched(true);
+                    }}
+                  />
+                </label>
+                <label>
+                  <span>To</span>
+                  <input
+                    type="date"
+                    aria-label="Season window end, blank for the latest day available"
+                    value={seasonTo ?? ""}
+                    min={seasonFrom}
+                    max={`${currentYear}-12-31`}
+                    onChange={(e) => setSeasonTo(e.target.value || null)}
+                  />
+                </label>
+                {seasonTo ? (
+                  <button
+                    type="button"
+                    className="link-btn"
+                    onClick={() => setSeasonTo(null)}
+                    title="Go back to counting up to the newest day available"
+                  >
+                    to latest
+                  </button>
+                ) : (
+                  <span className="muted" style={{ fontSize: "0.72rem" }}>
+                    to the latest day available
+                  </span>
                 )}
               </div>
               {histLoading ? (
@@ -976,7 +1148,7 @@ export default function Page() {
               ) : (
                 <div className="tiles compact">
                   <div className="tile">
-                    <div className="k">Rain since</div>
+                    <div className="k">Rain</div>
                     <div className="v">
                       {rainStat
                         ? convert(rainStat.value, "precip", units).toFixed(precipDp)
@@ -1012,23 +1184,13 @@ export default function Page() {
                           vs normal
                         </div>
                       ))}
-                    <div className="since-row">
-                      <input
-                        type="date"
-                        aria-label="Rain accumulated since"
-                        value={rainSince}
-                        min={`${currentYear}-01-01`}
-                        max={history?.lastObserved ?? `${currentYear}-12-31`}
-                        onChange={(e) => setRainSince(e.target.value)}
-                      />
-                    </div>
                   </div>
 
                   <div className="tile">
                     {/* Names the crop, because "GDD since" alone is
                         unanswerable — a user asked what crop it meant. */}
                     <div className="k">
-                      GDD since · {GDD_PRESETS[gddPreset].short}
+                      GDD · {gddShort}
                     </div>
                     <div className="v">
                       {gddStat
@@ -1059,23 +1221,10 @@ export default function Page() {
                           vs normal
                         </div>
                       ))}
-                    <div className="since-row">
-                      <input
-                        type="date"
-                        aria-label="GDD accumulated since"
-                        value={gddSince}
-                        min={`${currentYear}-01-01`}
-                        max={history?.lastObserved ?? `${currentYear}-12-31`}
-                        onChange={(e) => {
-                          setGddSince(e.target.value);
-                          setGddSinceTouched(true);
-                        }}
-                      />
-                    </div>
                   </div>
 
                   <div className="tile">
-                    <div className="k">Estimated ET since</div>
+                    <div className="k">Estimated ET</div>
                     <div className="v">
                       {etStat
                         ? convert(etStat.value, "precip", units).toFixed(precipDp)
@@ -1111,16 +1260,6 @@ export default function Page() {
                           : "water used by the crop"
                         : "needs satellite data"}
                     </div>
-                    <div className="since-row">
-                      <input
-                        type="date"
-                        aria-label="Estimated ET accumulated since"
-                        value={etSince}
-                        min={`${currentYear}-01-01`}
-                        max={history?.lastObserved ?? `${currentYear}-12-31`}
-                        onChange={(e) => setEtSince(e.target.value)}
-                      />
-                    </div>
                   </div>
 
                   {/*
@@ -1129,7 +1268,7 @@ export default function Page() {
                     is shown unsigned with the word doing the work instead.
                   */}
                   <div className="tile">
-                    <div className="k">Water balance since</div>
+                    <div className="k">Water balance</div>
                     <div
                       className="v"
                       style={{
@@ -1297,7 +1436,7 @@ export default function Page() {
               field={trendField}
               onFieldChange={setTrendField}
               waterLoading={waterLoading}
-              gddCropShort={GDD_PRESETS[gddPreset].short}
+              gddCropShort={gddShort}
               exportContext={exportContext}
             />
             )}

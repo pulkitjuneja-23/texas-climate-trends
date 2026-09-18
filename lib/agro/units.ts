@@ -9,6 +9,16 @@
 export type UnitSystem = "imperial" | "metric";
 
 export const cToF = (c: number): number => c * 9 / 5 + 32;
+/**
+ * The inverse, for the one place a reader types a temperature IN rather than
+ * reading one out: their own growing-degree-day base.
+ *
+ * Everything internal is Celsius, so a typed value has to come back to it
+ * immediately. Storing what they typed and remembering which unit it was in
+ * would mean a base of 50 silently becoming 50 degC the moment somebody
+ * flipped the units toggle.
+ */
+export const fToC = (f: number): number => (f - 32) * 5 / 9;
 /** For DIFFERENCES and GDD, not absolute temperatures — no 32 offset. */
 export const cDeltaToF = (c: number): number => c * 9 / 5;
 export const mmToIn = (mm: number): number => mm / 25.4;

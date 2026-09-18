@@ -28,6 +28,19 @@ export interface GddConfig {
 export const CORN_GDD: GddConfig = { base: 10, cutoff: 30, method: "modified" };
 export const COTTON_GDD: GddConfig = { base: 15.6, cutoff: 32.2, method: "simple" };
 export const WHEAT_GDD: GddConfig = { base: 4.4, cutoff: 30, method: "simple" };
+/**
+ * Bermuda grass — a warm-season perennial, so this one is not a crop calendar.
+ *
+ * Base 10 degC (50 degF) is the figure Texas forage and turf extension work
+ * uses for bermudagrass growth. The simple method is right here: the modified
+ * method's cap exists because a corn KERNEL stops filling in extreme heat, and
+ * bermuda grass has no equivalent — it keeps growing through a Texas summer,
+ * which is most of why it is planted.
+ */
+export const BERMUDA_GDD: GddConfig = { base: 10, cutoff: 30, method: "simple" };
+
+/** Starting point when the grower switches to a custom base of their own. */
+export const CUSTOM_GDD_DEFAULT: GddConfig = { base: 10, cutoff: 30, method: "simple" };
 
 /**
  * `short` exists so the crop can be named wherever GDD is shown.
@@ -50,6 +63,39 @@ export const GDD_PRESETS: Record<
   },
   cotton: { label: "Cotton (60-90°F)", short: "cotton", config: COTTON_GDD, planting: "04-01" },
   wheat: { label: "Wheat (40°F)", short: "wheat", config: WHEAT_GDD, planting: "10-01" },
+  /*
+    Bermuda grass is PERENNIAL, so "planting" here means spring green-up, not a
+    date anything goes in the ground. 1 March is the broad statewide point at
+    which soil temperature brings it out of dormancy; it is earlier in the
+    Valley and later on the High Plains, same caveat as every other date here.
+  */
+  bermuda: {
+    label: "Bermuda grass (50°F)",
+    short: "bermuda grass",
+    config: BERMUDA_GDD,
+    planting: "03-01",
+  },
+  /*
+    The grower's own base temperature.
+
+    `config` here is only the starting point — the live value is held in the
+    page's state and replaces this, because a setting the reader can change has
+    to live where React can see it change. The label is deliberately generic;
+    the UI prints the actual base beside it, so the number on screen is always
+    the number being used.
+
+    It exists because these four presets cannot cover the question. Base
+    temperatures in real use run from about 0 degC for cool-season grasses to
+    18 degC for some tropical species, and a grower or agronomist working on
+    anything outside this list was previously stuck with the nearest wrong
+    answer.
+  */
+  custom: {
+    label: "Custom base temperature",
+    short: "custom base",
+    config: CUSTOM_GDD_DEFAULT,
+    planting: "01-01",
+  },
 };
 
 /**

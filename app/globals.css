@@ -844,6 +844,128 @@ button:disabled {
   first is the honest arrangement, and it also makes the control discoverable
   rather than something to find afterwards.
 */
+/*
+  The one date window the whole "Season so far" card runs on.
+
+  Sits directly under the heading rather than inside the tiles, because it now
+  governs all four of them — putting it in one of them would imply it belonged
+  to that one, which is exactly the confusion three separate pickers caused.
+*/
+.season-range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin: 0 0 10px;
+}
+
+.season-range label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+  text-transform: none;
+  letter-spacing: 0;
+  margin: 0;
+}
+
+.season-range input[type="date"] {
+  font-size: 0.74rem;
+  padding: 2px 5px;
+  min-height: 0;
+  /* Date inputs carry a large intrinsic minimum width; without this the card
+     refuses to narrow on a phone. Same trap as the tiles on 25 August. */
+  min-width: 0;
+}
+
+/* Figure size, under the download buttons. */
+.export-size {
+  margin-top: 5px;
+  font-size: 0.72rem;
+  padding: 2px 4px;
+  min-height: 0;
+  max-width: 100%;
+}
+
+/* The date window beside the season chart's view selector. */
+.chart-range {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.chart-range input[type="date"] {
+  font-size: 0.74rem;
+  padding: 2px 5px;
+  min-height: 0;
+  min-width: 0;
+}
+
+.chart-range-sep {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+}
+
+/* A button that reads as a link — for an action that undoes a setting rather
+   than performing one. */
+.link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  min-height: 0;
+  font-size: 0.72rem;
+  color: var(--series-1);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/*
+  Custom growing-degree-day base.
+
+  Sits directly under the crop selector in both places that selector appears.
+  The two number inputs are deliberately narrow — they hold two or three digits
+  and a wide box invites the reader to expect something else to fit.
+*/
+.gdd-custom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin-top: 6px;
+}
+
+.gdd-custom label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+  text-transform: none;
+  letter-spacing: 0;
+  margin: 0;
+}
+
+.gdd-custom input[type="number"] {
+  width: 4.5em;
+  font-size: 0.78rem;
+  padding: 2px 4px;
+  min-height: 0;
+}
+
+.gdd-unit {
+  color: var(--text-muted);
+}
+
+/* Takes the whole row, so the two inputs stay side by side above it. */
+.gdd-hint {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
 .since-row {
   display: flex;
   align-items: center;

@@ -2036,6 +2036,90 @@ deploy time, so adding a variable afterwards does nothing until the next build. 
 by an unset key fails closed and returns a plain 404, which is correct security and indistinguishable
 from a route that was never deployed — so check both together.
 
+### 2026-09-18 — Bermuda grass, one season window, chart date range, manuscript figures
+
+Four user requests in one pass.
+
+#### Growing degree days: bermuda grass, and any base you like
+
+`bermuda` (base 10 degC / 50 degF, SIMPLE method) and `custom` added to `GDD_PRESETS`.
+Bermuda uses the simple method deliberately: the modified method's cap exists because a corn
+KERNEL stops filling in extreme heat, and bermuda grass has no equivalent — it keeps growing
+through a Texas summer, which is most of why it is planted. Its "planting" date is spring
+green-up, not a sowing date; it is a perennial.
+
+The custom base is held in **Celsius** and converted only at the input (`fToC` added to
+`units.ts`). Storing what the reader typed would make a base of 50 silently become 50 degC the
+moment somebody flipped the units toggle. **The cap is what selects the method** — blank gives
+simple, a value gives modified — rather than offering a "method" dropdown that explains nothing
+and lets the reader pick a contradiction.
+
+`GddBaseInput` is built once in the page and passed to BOTH places the crop selector appears,
+as a `gddExtra` node. The alternative was five more props on each of two components.
+
+#### One date window for "Season so far", with an end as well as a start
+
+Three independent pickers became `seasonFrom` / `seasonTo`. **This fixed a real fault, not just
+the clicking:** rain and ET could be summed over different windows and then subtracted from each
+other, which makes the water-balance tile quietly meaningless. They are four views of one season,
+so they take one window.
+
+The start still follows the crop's planting date until touched — and sharing the date IMPROVES
+rain and ET rather than compromising them, because rain-since-planting is the comparison a grower
+wants anyway. `seasonTo` is **null by default**, meaning "the newest day there is"; resolved at
+read time so it keeps up as data arrives instead of freezing at first load. A chosen end past the
+data is clamped, not refused — someone planning a whole season will naturally pick a harvest date
+that has not happened.
+
+#### The season chart can be cut to a date range
+
+`rangeFrom` / `rangeTo` as MM-DD, defaulting to the whole year, beside the view selector.
+**In an accumulated view the running total restarts at the window's first day** — for every year
+AND the normal band. Any other choice draws a band accumulated from 1 January beside a line
+accumulated from 1 March, which sit nowhere near each other. `accumulate`, `accumClimatology` and
+`startsWithin` all already took a start index; only the call sites changed.
+
+X-axis ticks are now **thinned to the measured width** (~40 px per label, via a `ResizeObserver`).
+Twelve month names collide into an unreadable band below about 500 px — which is both a phone and
+a journal-column figure. Recharts will not thin ticks supplied explicitly, so it is done by hand.
+
+#### Figures sized for a manuscript
+
+Readers said the figures were too wide to place in a paper. **Scaling the export cannot fix that**
+— it changes the pixel count, not the shape; a 3.5-inch-wide version of a window-wide chart is the
+same wide chart, smaller, with type too small to read. So `renderAt` resizes the chart off-screen,
+lets Recharts re-lay-out, captures, and restores. Presets are journal column widths at 300 dpi.
+
+**THE ANIMATION TRAP — this shipped into a test and produced a confident, plausible, empty figure.**
+Waiting for the container to reach the target width is NOT waiting for the chart to be drawn:
+resizing re-runs Recharts' entry animation, so for ~1.5 s the lines are partly drawn. The first
+single-column export came out with correct axes, correct title, correct legend, correct
+provenance — and one short fragment of one line. Nothing errored. It now polls the `d` attributes
+of every line and area until they stop changing for 8 frames. **Any future capture-after-resize
+needs the same wait.**
+
+Two more corrections found only by looking at the rendered PNG:
+- **Text is wrapped and measured, not placed at fixed heights.** At 3.5 inches the title, subtitle
+  and provenance line each overflowed, and `fillText` clips silently — a figure losing its own
+  source line is exactly what that provenance block exists to prevent.
+- **Type scales with width** (floor 0.68, so nothing prints below ~6 pt). Held fixed, the caption
+  block grew TALLER than the plot: the first single-column export measured 1200x1318, a portrait
+  figure for a request about column width.
+- The requested size is the **finished image**, not the plot: the margin is subtracted before
+  resizing, so "single column" really is 1050 px. Height cannot be made exact the same way — how
+  tall the caption wraps is only known after measuring against the final width.
+
+#### Compare years is no longer capped at five
+
+`MAX_COMPARE` was a palette limit dressed up as a feature. Past five the colours cycle and the UI
+says so; the direct end-labels are what make that survivable and are now load-bearing for a third
+reason. Verified with 8 years selected: 10 lines, 7 distinct colours, no disabled chips.
+
+**Verified through CDP against the running site**, not assumed: whole year 365 points and 12 ticks
+→ Mar 1-Jun 30 gives 122 points and 4 ticks with accumulation restarting at zero; custom base
+renders in both selector locations and the tile reads "GDD · base 50°F"; exports measured at
+1050 / 2100 / 2752 px wide; and the single-column PNG was pulled out of the browser and looked at.
+
 ## Next up
 
 Items 1, 4 and 7 of the original list are done (gridMET as a source, OpenET, shipped to Vercel).

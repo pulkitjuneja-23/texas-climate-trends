@@ -180,71 +180,170 @@ export async function svgToPngBlob(
       img.src = svgUrl;
     });
 
-    // Room above for the title block, and below for the legend and provenance.
+    /*
+      EVERYTHING AROUND THE PLOT IS MEASURED AND WRAPPED, NOT PLACED AT FIXED
+      HEIGHTS.
+
+      This used to assume a chart roughly as wide as a browser window, so the
+      title, the provenance line and the legend were each drawn as one
+      unwrapped row at a fixed y. Once a reader can ask for a 3.5-inch
+      single-column figure — which is the whole point of the size control —
+      every one of those runs off the edge, and `fillText` clips silently
+      rather than failing. A figure that loses its own source line is exactly
+      the outcome this provenance block exists to prevent.
+
+      So the text is wrapped to the plot width first, the heights are derived
+      from how many lines that produced, and the canvas is sized last.
+    */
     const padX = 24;
-    const padTop = meta.title ? 74 : 16;
-    const legendH = meta.legend?.length ? 26 : 0;
-    const padBottom = (meta.footer ? 40 : 16) + legendH;
+    const font = `system-ui, -apple-system, "Segoe UI", sans-serif`;
+
+    /*
+      TYPE SCALES WITH THE FIGURE, or a narrow one is mostly caption.
+
+      The sizes below were chosen against a browser-width chart. Held fixed,
+      they do not merely look large on a 3.5-inch single-column figure — the
+      title, subtitle and provenance line each wrap to two or three rows, and
+      the block of text around the plot grew TALLER than the plot itself. The
+      first single-column export measured 1200 x 1318: a portrait figure, for a
+      request that was about fitting a column width.
+
+      Shrinking with the width keeps the proportions a reader expects. The
+      floor matters as much as the ratio: at 300 dpi a 12 px face prints at
+      about 9 pt and a 8.2 px face at about 6 pt, which is the smallest most
+      journals accept, so the scale is not allowed below 0.68.
+    */
+    const ts = Math.max(0.68, Math.min(1, w / 700));
+    const px = (n: number) => Math.round(n * ts * 10) / 10;
 
     const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("This browser would not provide a drawing canvas.");
+
+    /** Greedy word wrap. Returns at least one line for a non-empty string. */
+    const wrap = (text: string, maxWidth: number): string[] => {
+      if (!text) return [];
+      const words = text.split(/\s+/);
+      const lines: string[] = [];
+      let line = "";
+      for (const word of words) {
+        const next = line ? `${line} ${word}` : word;
+        if (line && ctx.measureText(next).width > maxWidth) {
+          lines.push(line);
+          line = word;
+        } else {
+          line = next;
+        }
+      }
+      if (line) lines.push(line);
+      return lines;
+    };
+
+    // --- measure (before the canvas is sized; sizing it resets the context) ---
+    ctx.font = `600 ${px(19)}px ${font}`;
+    const titleLines = meta.title ? wrap(meta.title, w) : [];
+    ctx.font = `${px(13)}px ${font}`;
+    const subLines = meta.subtitle ? wrap(meta.subtitle, w) : [];
+    ctx.font = `${px(12)}px ${font}`;
+    const footerLines = meta.footer ? wrap(meta.footer, w) : [];
+
+    const SWATCH = Math.round(16 * ts);
+    const legendRows: LegendItem[][] = [];
+    if (meta.legend?.length) {
+      let row: LegendItem[] = [];
+      let x = 0;
+      for (const item of meta.legend) {
+        const itemW = SWATCH + 6 * ts + ctx.measureText(item.label).width + 18 * ts;
+        if (row.length && x + itemW > w) {
+          legendRows.push(row);
+          row = [];
+          x = 0;
+        }
+        row.push(item);
+        x += itemW;
+      }
+      if (row.length) legendRows.push(row);
+    }
+
+    const TITLE_LH = px(24);
+    const SUB_LH = px(17);
+    const FOOT_LH = px(16);
+    const LEGEND_LH = px(20);
+
+    const padTop = titleLines.length
+      ? px(10) + titleLines.length * TITLE_LH + subLines.length * SUB_LH + px(8)
+      : px(16);
+    const legendH = legendRows.length ? legendRows.length * LEGEND_LH + px(6) : 0;
+    const padBottom =
+      legendH + (footerLines.length ? footerLines.length * FOOT_LH + px(14) : px(16));
+
     canvas.width = (w + padX * 2) * scale;
     canvas.height = (h + padTop + padBottom) * scale;
 
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("This browser would not provide a drawing canvas.");
+    // --- draw ---
     ctx.scale(scale, scale);
-
     ctx.fillStyle = background;
     ctx.fillRect(0, 0, w + padX * 2, h + padTop + padBottom);
 
-    const font = `system-ui, -apple-system, "Segoe UI", sans-serif`;
-    if (meta.title) {
+    ctx.textBaseline = "alphabetic";
+    let y = px(10);
+    if (titleLines.length) {
       ctx.fillStyle = foreground;
-      ctx.font = `600 19px ${font}`;
-      ctx.textBaseline = "alphabetic";
-      ctx.fillText(meta.title, padX, 32);
-
+      ctx.font = `600 ${px(19)}px ${font}`;
+      for (const line of titleLines) {
+        y += TITLE_LH;
+        ctx.fillText(line, padX, y);
+      }
       ctx.fillStyle = muted;
-      ctx.font = `13px ${font}`;
-      ctx.fillText(meta.subtitle, padX, 54);
+      ctx.font = `${px(13)}px ${font}`;
+      for (const line of subLines) {
+        y += SUB_LH;
+        ctx.fillText(line, padX, y);
+      }
     }
 
     ctx.drawImage(img, padX, padTop, w, h);
 
-    if (meta.legend?.length) {
-      let x = padX;
-      const y = h + padTop + 16;
-      ctx.font = `12px ${font}`;
+    let below = h + padTop;
+    if (legendRows.length) {
+      ctx.font = `${px(12)}px ${font}`;
       ctx.textBaseline = "middle";
-
-      for (const item of meta.legend) {
-        const swatch = 16;
-        if (item.kind === "band") {
-          ctx.fillStyle = item.varName;
-          ctx.fillRect(x, y - 5, swatch, 10);
-        } else {
-          ctx.strokeStyle = item.varName;
-          ctx.lineWidth = 2.5;
-          ctx.setLineDash(item.kind === "dash" ? [4, 3] : []);
-          ctx.beginPath();
-          ctx.moveTo(x, y);
-          ctx.lineTo(x + swatch, y);
-          ctx.stroke();
-          ctx.setLineDash([]);
+      for (const row of legendRows) {
+        const rowY = below + LEGEND_LH / 2 + 3 * ts;
+        let x = padX;
+        for (const item of row) {
+          if (item.kind === "band") {
+            ctx.fillStyle = item.varName;
+            ctx.fillRect(x, rowY - 5 * ts, SWATCH, 10 * ts);
+          } else {
+            ctx.strokeStyle = item.varName;
+            ctx.lineWidth = 2.5 * ts;
+            ctx.setLineDash(item.kind === "dash" ? [4 * ts, 3 * ts] : []);
+            ctx.beginPath();
+            ctx.moveTo(x, rowY);
+            ctx.lineTo(x + SWATCH, rowY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+          x += SWATCH + 6 * ts;
+          ctx.fillStyle = muted;
+          ctx.fillText(item.label, x, rowY);
+          x += ctx.measureText(item.label).width + 18 * ts;
         }
-        x += swatch + 6;
-
-        ctx.fillStyle = muted;
-        ctx.fillText(item.label, x, y);
-        x += ctx.measureText(item.label).width + 18;
+        below += LEGEND_LH;
       }
+      below += px(6);
       ctx.textBaseline = "alphabetic";
     }
 
-    if (meta.footer) {
+    if (footerLines.length) {
       ctx.fillStyle = muted;
-      ctx.font = `12px ${font}`;
-      ctx.fillText(meta.footer, padX, h + padTop + legendH + 26);
+      ctx.font = `${px(12)}px ${font}`;
+      let fy = below + 4 * ts;
+      for (const line of footerLines) {
+        fy += FOOT_LH;
+        ctx.fillText(line, padX, fy);
+      }
     }
 
     return await new Promise<Blob>((resolve, reject) =>

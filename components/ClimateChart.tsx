@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ComposedChart,
   Area,
@@ -15,6 +15,7 @@ import {
 import type { DailyRecord } from "@/lib/types";
 import {
   DOY_KEYS,
+  KEY_INDEX,
   alignByYear,
   dailyClimatology,
   accumClimatology,
@@ -74,7 +75,21 @@ const SERIES_VARS = [
   "--series-6",
 ];
 const CURRENT_VAR = "--series-1";
-const MAX_COMPARE = 5;
+
+/**
+ * How many years can be drawn before the colours start repeating.
+ *
+ * NOT a limit any more. It used to be one — five, the size of the palette —
+ * and that was a palette constraint dressed up as a feature: readers asked for
+ * more years for manuscript figures, and a cap that silently refuses the sixth
+ * is worse than a sixth line sharing a hue with the first. Past this point the
+ * ramp cycles and the UI says so, which is honest and leaves the choice with
+ * the person who knows what their figure needs.
+ *
+ * The direct end-labels are what make repeating colours survivable, and they
+ * are now load-bearing for a third reason. Do not remove them.
+ */
+const DISTINCT_COLOURS = SERIES_VARS.length;
 
 export type ViewMode = "daily" | "accumulated";
 
@@ -159,6 +174,19 @@ interface Props {
   onFieldChange: (f: Field) => void;
   mode: ViewMode;
   onModeChange: (m: ViewMode) => void;
+  /**
+   * The slice of the calendar to draw, as MM-DD. Defaults to the whole year.
+   *
+   * WHAT A WINDOW MEANS FOR AN ACCUMULATED VIEW: the running total restarts at
+   * the window's first day, for every year and for the normal band alike. That
+   * is the only reading that answers the question a window is asked for —
+   * "how much rain has this crop had since I planted" — and it keeps the band
+   * comparable, since a band accumulated from 1 January beside a line
+   * accumulated from 1 March would sit nowhere near each other.
+   */
+  rangeFrom?: string;
+  rangeTo?: string;
+  onRangeChange?: (from: string, to: string) => void;
   compareYears: number[];
   onCompareChange: (years: number[]) => void;
   currentYear: number;
@@ -177,6 +205,8 @@ interface Props {
   gddPresetKey?: string;
   gddPresets?: Record<string, { label: string; short: string }>;
   onGddPresetChange?: (key: string) => void;
+  /** Extra controls beside the crop selector — the custom base temperature. */
+  gddExtra?: React.ReactNode;
   /** Provenance for the CSV and figure exports — a chart that leaves the app
    *  without naming its source undercuts the whole argument for the picker. */
   exportContext?: ExportContext;
@@ -209,10 +239,47 @@ export default function ClimateChart(props: Props) {
     records, field, onFieldChange, mode, onModeChange,
     compareYears, onCompareChange, currentYear, availableYears,
     units, gddConfig, smoothing, lastObserved, waterStatus, exportContext,
-    gddPresetKey, gddPresets, onGddPresetChange,
+    gddPresetKey, gddPresets, onGddPresetChange, gddExtra,
+    rangeFrom = "01-01", rangeTo = "12-31", onRangeChange,
   } = props;
 
+  /**
+   * The window as row indices. Clamped and ordered here so a reversed or
+   * unrecognised pair degrades to the whole year rather than producing an
+   * empty chart with nothing to explain it.
+   */
+  const startIdx = Math.min(
+    KEY_INDEX.get(rangeFrom) ?? 0,
+    KEY_INDEX.get(rangeTo) ?? DOY_KEYS.length - 1
+  );
+  const endIdx = Math.max(
+    KEY_INDEX.get(rangeFrom) ?? 0,
+    KEY_INDEX.get(rangeTo) ?? DOY_KEYS.length - 1
+  );
+  const isFullYear = startIdx === 0 && endIdx === DOY_KEYS.length - 1;
+
   const chartRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * How wide the plot actually is, so the axis labels can be thinned to fit.
+   *
+   * Measured rather than assumed because the same chart is drawn at a phone's
+   * width, a desktop's, and — during a figure export — at a journal column
+   * width for a moment. All three need a different number of month labels.
+   */
+  const [chartWidth, setChartWidth] = useState(0);
+  useEffect(() => {
+    const el = chartRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? 0;
+      // Only react to real changes, or the export's off-screen resize would
+      // bounce this back and forth against its own re-render.
+      setChartWidth((prev) => (Math.abs(prev - w) > 1 ? w : prev));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const isWaterField = WATER_FIELDS.includes(field);
   /** True when the underlying data is published monthly, not daily. */
@@ -269,7 +336,7 @@ export default function ClimateChart(props: Props) {
     // make "normal" step down wherever a year drops out of the pool.
     const bandYears =
       Number.isFinite(maxGap) && effectiveMode === "accumulated"
-        ? yearsWithData.filter((s) => !hasLongGap(s, maxGap) && startsWithin(s, 0, maxGap))
+        ? yearsWithData.filter((s) => !hasLongGap(s, maxGap) && startsWithin(s, startIdx, maxGap))
         : baseline;
 
     // A monthly source shown "day by day" becomes monthly totals, unsmoothed —
@@ -278,7 +345,7 @@ export default function ClimateChart(props: Props) {
 
     const stats: DayStat[] =
       effectiveMode === "accumulated"
-        ? accumClimatology(bandYears, 0, maxGap)
+        ? accumClimatology(bandYears, startIdx, maxGap)
         : monthlyView
         ? dailyClimatology(
             baseline.filter((s) => s.values.some((v) => v !== null)).map(toMonthlyTotals),
@@ -300,14 +367,22 @@ export default function ClimateChart(props: Props) {
       curves.set(
         y,
         effectiveMode === "accumulated"
-          ? accumulate(ys, 0, maxGap).values
+          ? accumulate(ys, startIdx, maxGap).values
           : monthlyView
           ? toMonthlyTotals(ys).values
           : ys.values
       );
     }
 
-    const rows: Row[] = DOY_KEYS.map((key, i) => {
+    /*
+      Only the window is turned into rows. Slicing here rather than filtering
+      later keeps every index in this block referring to the same thing — the
+      stats and curve arrays are still full-length and are read at `i`, which
+      is the absolute day, while the chart receives only the days asked for.
+    */
+    const rows: Row[] = [];
+    for (let i = startIdx; i <= endIdx; i++) {
+      const key = DOY_KEYS[i];
       const s = stats[i];
       const row: Row = {
         key,
@@ -324,8 +399,8 @@ export default function ClimateChart(props: Props) {
         const v = curves.get(y)![i];
         row[`y${y}`] = v === null ? null : convert(v, quantity, units);
       }
-      return row;
-    });
+      rows.push(row);
+    }
 
     return {
       rows,
@@ -336,7 +411,52 @@ export default function ClimateChart(props: Props) {
       bandFirstYear,
       bandLastYear,
     };
-  }, [records, field, effectiveMode, compareYears, currentYear, units, gddConfig, smoothing, quantity]);
+  }, [records, field, effectiveMode, compareYears, currentYear, units, gddConfig, smoothing, quantity, startIdx, endIdx]);
+
+  /**
+   * Month starts, but only the ones inside the window.
+   *
+   * A category axis silently drops a tick whose value is not in the data, so
+   * the fixed twelve would leave a narrow window almost unlabelled — a window
+   * from mid-March to mid-April would show one tick, "Apr", and nothing to say
+   * where the chart begins. When fewer than two month starts survive, the
+   * window's own ends are labelled instead, which is the information actually
+   * missing.
+   */
+  const xTicks = useMemo(() => {
+    const inWindow = MONTH_TICKS.filter((k) => {
+      const i = KEY_INDEX.get(k);
+      return i !== undefined && i >= startIdx && i <= endIdx;
+    });
+
+    let picked: string[];
+    if (inWindow.length >= 2) {
+      picked = inWindow;
+    } else {
+      const ends = [DOY_KEYS[startIdx], DOY_KEYS[endIdx]];
+      picked = [...new Set([...ends, ...inWindow])].sort(
+        (a, b) => (KEY_INDEX.get(a) ?? 0) - (KEY_INDEX.get(b) ?? 0)
+      );
+    }
+
+    /*
+      THIN THE LABELS TO THE WIDTH ACTUALLY AVAILABLE.
+
+      Twelve month names need roughly 40 px each. Below about 500 px they
+      collide into an unreadable band — "JanFebMarAprMay..." — which is what a
+      3.5-inch journal figure and a phone screen both produce. Recharts will
+      not thin ticks that were supplied explicitly, so it is done here.
+
+      Keeping every nth rather than letting the chart drop whichever overlap
+      means the surviving labels stay evenly spaced, and the first is always
+      kept so the reader knows where the axis starts.
+    */
+    const perLabel = 40;
+    const maxLabels = Math.max(2, Math.floor((chartWidth || 700) / perLabel));
+    if (picked.length <= maxLabels) return picked;
+    const step = Math.ceil(picked.length / maxLabels);
+    return picked.filter((_, i) => i % step === 0);
+  }, [startIdx, endIdx, chartWidth]);
 
   const unit = unitLabel(quantity, units);
   const dp = decimals(quantity, units);
@@ -448,7 +568,8 @@ export default function ClimateChart(props: Props) {
   function toggleYear(y: number) {
     if (compareYears.includes(y)) {
       onCompareChange(compareYears.filter((x) => x !== y));
-    } else if (compareYears.length < MAX_COMPARE) {
+    } else {
+      // Deliberately unbounded — see DISTINCT_COLOURS.
       onCompareChange([...compareYears, y]);
     }
   }
@@ -557,6 +678,56 @@ export default function ClimateChart(props: Props) {
         )}
 
         {/*
+          The slice of the year to draw.
+
+          Beside the view selector because it is the same kind of setting —
+          both change how the year is presented rather than what is measured.
+          Whole year is the default and stays the default; a grower who wants
+          the whole year never has to touch this, and the reset only appears
+          once it has been narrowed.
+
+          The year on these inputs is cosmetic. Only MM-DD is used, because the
+          window applies to EVERY year drawn — that is the whole idea of laying
+          the seasons over one another.
+        */}
+        {onRangeChange && (
+          <div className="field">
+            <label>Dates shown</label>
+            <div className="chart-range">
+              <input
+                type="date"
+                aria-label="First day shown"
+                value={`${currentYear}-${rangeFrom}`}
+                onChange={(e) => {
+                  const md = e.target.value.slice(5, 10);
+                  if (KEY_INDEX.has(md)) onRangeChange(md, rangeTo);
+                }}
+              />
+              <span className="chart-range-sep">to</span>
+              <input
+                type="date"
+                aria-label="Last day shown"
+                value={`${currentYear}-${rangeTo}`}
+                onChange={(e) => {
+                  const md = e.target.value.slice(5, 10);
+                  if (KEY_INDEX.has(md)) onRangeChange(rangeFrom, md);
+                }}
+              />
+              {!isFullYear && (
+                <button
+                  type="button"
+                  className="link-btn"
+                  onClick={() => onRangeChange("01-01", "12-31")}
+                  title="Show the whole calendar year again"
+                >
+                  whole year
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/*
           The crop appears NEXT TO the chart, only when growing degree days are
           being shown. It used to live in a settings row further down the page,
           and a user could not work out what crop the degree days were for —
@@ -580,6 +751,10 @@ export default function ClimateChart(props: Props) {
             </select>
           </div>
         )}
+        {/* The custom base inputs, when the crop selector is set to custom.
+            Rendered by the page so both places the selector appears get the
+            same control without five more props each. */}
+        {field === "gdd" && gddExtra}
 
         <div className="field" style={{ marginLeft: "auto" }}>
           <label>&nbsp;</label>
@@ -598,9 +773,23 @@ export default function ClimateChart(props: Props) {
 
       <div className="field" style={{ marginBottom: 14 }}>
         <label>
-          Compare years — pick up to {MAX_COMPARE}
-          {compareYears.length >= MAX_COMPARE && (
-            <span className="muted"> · limit reached, deselect one to add another</span>
+          Compare years
+          {compareYears.length > DISTINCT_COLOURS && (
+            <span className="muted">
+              {" "}
+              · past {DISTINCT_COLOURS} the colours repeat, so read the labels at
+              the end of each line
+            </span>
+          )}
+          {compareYears.length > 0 && (
+            <button
+              type="button"
+              className="link-btn"
+              style={{ marginLeft: 8 }}
+              onClick={() => onCompareChange([])}
+            >
+              clear {compareYears.length}
+            </button>
           )}
         </label>
         <div className="chip-row">
@@ -617,7 +806,6 @@ export default function ClimateChart(props: Props) {
                   className="chip"
                   aria-pressed={on}
                   onClick={() => toggleYear(y)}
-                  disabled={!on && compareYears.length >= MAX_COMPARE}
                   style={on ? { color: colorFor(y, idx) } : undefined}
                 >
                   {on && <span className="swatch" style={{ background: colorFor(y, idx) }} />}
@@ -664,8 +852,15 @@ export default function ClimateChart(props: Props) {
             <CartesianGrid stroke="var(--gridline)" vertical={false} />
             <XAxis
               dataKey="key"
-              ticks={MONTH_TICKS}
-              tickFormatter={(k: string) => MONTH_NAMES[Number(k.split("-")[0]) - 1]}
+              ticks={xTicks}
+              /* A month start is named by its month; a window edge that falls
+                 mid-month needs its day too, or "Mar" would appear twice
+                 meaning two different days. */
+              tickFormatter={(k: string) => {
+                const [mm, dd] = k.split("-");
+                const name = MONTH_NAMES[Number(mm) - 1];
+                return dd === "01" ? name : `${name} ${Number(dd)}`;
+              }}
               tick={{ fill: "var(--text-muted)", fontSize: 11 }}
               axisLine={{ stroke: "var(--baseline)" }}
               tickLine={false}
