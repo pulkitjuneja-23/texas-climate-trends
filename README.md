@@ -37,7 +37,7 @@ npm run typecheck # tsc --noEmit
 
 ### 1. Season tracker
 One calendar year on the x-axis with the 1996–2025 normal drawn behind it as a distribution band
-(the middle half of years), and any years you pick drawn on top. Variables: daily high /
+(the middle 50% of years), and any years you pick drawn on top. Variables: daily high /
 low / mean temperature, rainfall, and growing degree days.
 
 Rainfall and GDD default to **season-to-date accumulation** rather than daily values. This is

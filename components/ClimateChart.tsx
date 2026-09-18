@@ -545,7 +545,7 @@ export default function ClimateChart(props: Props) {
         // bands are the context that makes a single year readable, so a figure
         // without them explained is not self-contained.
         legend: [
-          { label: "Middle half of years", varName: "--band-inner", kind: "band" as const },
+          { label: "Middle 50% of years", varName: "--band-inner", kind: "band" as const },
           { label: "Average", varName: "--text-muted", kind: "dash" as const },
           // Same colour assignment as `colorFor`, so the legend cannot drift
           // from the lines it describes.
@@ -627,8 +627,9 @@ export default function ClimateChart(props: Props) {
       </div>
       <p className="card-sub">
         The dashed line is the {availableYears[0]}–{currentYear - 1} average for each calendar day
-        at this point. The grey band is the middle half of those years — half of them ran inside it,
-        a quarter above and a quarter below. Pick any year to draw on top.
+        at this point. The grey band holds the middle 50% of those years — half of them ran inside it,
+        a quarter above and a quarter below, so a year outside the band is not unusual. Pick any
+        year to draw on top.
       </p>
 
       <div className="controls">
@@ -886,6 +887,24 @@ export default function ClimateChart(props: Props) {
               chosen: it is the box-plot standard, it is the tightest honest
               summary of a typical year, and "half of all years sat in here" is
               a sentence that needs no further explanation.
+
+              RE-EXAMINED 18 September 2026 and KEPT, with two alternatives
+              considered and rejected, so this does not get relitigated:
+
+              - MEAN ± 1 STANDARD DEVIATION, which is what most crop-modelling
+                papers print. Rejected because accumulated rainfall is
+                right-skewed — a few very wet years pull the mean up — so the
+                lower edge can fall BELOW ZERO. A band implying negative
+                rainfall is visibly wrong, and symmetric bounds misdescribe an
+                asymmetric distribution. Percentiles assume nothing about shape
+                and both edges are always values some year actually reached.
+              - THE MIDDLE 80% (p10-p90, already computed and simply not drawn),
+                which would make "outside the band" mean a 1-in-5 year rather
+                than a 1-in-2 one. A fair argument; the user preferred to keep
+                the appearance already settled on.
+
+              The label is now "Middle 50% of years" rather than "middle half"
+              — same statistic, stated as one.
             */}
             <Area
               dataKey="band50"
@@ -965,7 +984,7 @@ export default function ClimateChart(props: Props) {
                     </div>
                     {row.band50 && (
                       <div className="tt-row">
-                        <span className="lbl">Middle half of years</span>
+                        <span className="lbl">Middle 50% of years</span>
                         <span className="val">
                           {row.band50[0].toFixed(dp)}–{row.band50[1].toFixed(dp)}
                         </span>
@@ -991,7 +1010,7 @@ export default function ClimateChart(props: Props) {
             className="swatch"
             style={{ background: "var(--band-inner)", display: "inline-block", marginRight: 5 }}
           />
-          Middle half of years
+          Middle 50% of years
         </span>
         <span className="small muted">— — Normal (mean)</span>
         {lastObservedKey && <span className="small muted">┆ Last observed day</span>}

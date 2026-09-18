@@ -144,7 +144,7 @@ Two things to read carefully here:
 
 **4. Season tracker** — the big chart
 One year, January to December, left to right.
-- The **grey band** is the middle half of the last 30 years — half of them ran inside it, a quarter
+- The **grey band** holds the middle 50% of the last 30 years — half of them ran inside it, a quarter
   above and a quarter below. If your line is above the band you are in the wettest quarter of
   years; below it, the driest quarter.
 - The **dashed grey line** is the average.
