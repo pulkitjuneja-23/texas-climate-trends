@@ -623,11 +623,13 @@ export default async function InsightsPage({
             that does not involve asking people to log in.
           </li>
           <li>
-            <strong>{a.unidentified.toLocaleString()} lookups</strong> came from
-            browsers that would not store a code at all (private windows, strict
-            privacy settings). They count in the lookup totals but cannot be
-            attributed to a person, which nudges the visitor count slightly low
-            and the &ldquo;new&rdquo; share slightly high.
+            <strong>{a.unidentified.toLocaleString()} lookups</strong> carry no
+            visitor code, so they count in the lookup totals but cannot be
+            attributed to a person. There are two causes and this figure cannot
+            tell them apart: visits recorded before 18 September 2026, when codes
+            did not exist yet, and browsers that refuse to store one (private
+            windows, strict privacy settings). Either way it nudges the visitor
+            count slightly low and the &ldquo;new&rdquo; share slightly high.
           </li>
           <li>
             <strong>County resolution only.</strong> The coordinate is turned
