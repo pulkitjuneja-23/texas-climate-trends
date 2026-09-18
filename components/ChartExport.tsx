@@ -48,16 +48,36 @@ interface Props {
  *
  * 300 dpi is the figure requirement almost every journal states.
  */
-const DPI = 300;
+/**
+ * 600 dpi, not 300.
+ *
+ * 300 is the figure minimum most journals state; 600 is what they ask for when
+ * a figure contains fine line work and small type, which this one does — thin
+ * series lines, a dashed average and 11 px axis labels. It doubles the pixel
+ * count for the same physical size, so a single-column figure lands around
+ * 2 MB rather than 500 kB, which is a trade worth making once rather than
+ * discovering at proof stage.
+ */
+const DPI = 600;
 /** CSS pixels per inch, fixed by the CSS specification. */
 const CSS_PPI = 96;
 
-const SIZES: Array<{ id: string; label: string; w: number; h: number } | { id: "screen"; label: string; w: null; h: null }> = [
-  { id: "screen", label: "As on screen", w: null, h: null },
-  { id: "single", label: 'Journal single column (3.5")', w: 3.5, h: 2.6 },
-  { id: "onehalf", label: 'Journal 1.5 column (5")', w: 5, h: 3.4 },
-  { id: "double", label: 'Journal double column (7")', w: 7, h: 4.2 },
-  { id: "slide", label: 'Slide (10 x 5.6")', w: 10, h: 5.6 },
+/**
+ * Sizes are named by their MEASUREMENTS, not by what they are for.
+ *
+ * They used to read "Journal single column (3.5\")" and so on, which puts the
+ * reader's own judgement second: they know the width they need, and a label
+ * that leads with a category makes them translate it. Width x height, plainly.
+ */
+const SIZES: Array<
+  | { id: string; label: string; w: number; h: number }
+  | { id: "screen"; label: string; w: null; h: null }
+> = [
+  { id: "screen", label: "Select size", w: null, h: null },
+  { id: "s35", label: '3.5 x 2.6 in', w: 3.5, h: 2.6 },
+  { id: "s50", label: '5 x 3.4 in', w: 5, h: 3.4 },
+  { id: "s70", label: '7 x 4.2 in', w: 7, h: 4.2 },
+  { id: "s100", label: '10 x 5.6 in', w: 10, h: 5.6 },
 ];
 
 /**
@@ -192,7 +212,9 @@ export default function ChartExport({ chartRef, buildCsv, buildFigure, chartId }
       const el = chartRef.current;
 
       if (!size || size.w === null || size.h === null) {
-        await downloadChartPng(el, filename, meta);
+        // No size chosen: the chart as it stands on screen, at the same
+        // detail per pixel as a sized export so the two are comparable.
+        await downloadChartPng(el, filename, meta, DPI / CSS_PPI);
       } else {
         // Scale chosen so the finished image is exactly the requested
         // physical size at 300 dpi, rather than an arbitrary multiplier.
@@ -223,27 +245,33 @@ export default function ChartExport({ chartRef, buildCsv, buildFigure, chartId }
         >
           {busy === "png" ? "…" : "Figure"}
         </button>
+        {/*
+          The size sits INSIDE the button group, immediately right of Figure,
+          because it modifies that button rather than standing on its own. It
+          was a separate control below and read as an unrelated setting — so
+          somebody could choose a size and never realise Figure was the thing
+          that applied it. Leaving it on "Select size" downloads the chart at
+          the size it is on screen, which is the common case and needs no
+          decision.
+        */}
+        <select
+          className="seg-select"
+          aria-label="Figure size"
+          value={sizeId}
+          onChange={(e) => setSizeId(e.target.value)}
+          disabled={busy !== null}
+          title="Pick a size, then press Figure. The chart is laid out again at that shape, so the labels stay readable."
+        >
+          {SIZES.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.label}
+            </option>
+          ))}
+        </select>
       </div>
-      {/* The figure's shape, not just its resolution — see SIZES. */}
-      <select
-        className="export-size"
-        aria-label="Figure size"
-        value={sizeId}
-        onChange={(e) => setSizeId(e.target.value)}
-        disabled={busy !== null}
-        title="Figure size. The chart is laid out again at this shape, so the labels stay readable."
-      >
-        {SIZES.map((s) => (
-          <option key={s.id} value={s.id}>
-            {s.label}
-          </option>
-        ))}
-      </select>
-      {sizeId !== "screen" && (
-        <span className="small muted" style={{ marginTop: 2 }}>
-          {DPI} dpi — ready to place at that width
-        </span>
-      )}
+      <span className="small muted" style={{ marginTop: 3 }}>
+        {sizeId === "screen" ? `As on screen · ${DPI} dpi` : `${DPI} dpi`}
+      </span>
       {error && (
         <span className="small" style={{ color: "var(--div-warm)", marginTop: 4 }}>
           {error}

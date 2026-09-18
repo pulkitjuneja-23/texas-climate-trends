@@ -879,13 +879,26 @@ button:disabled {
   min-width: 0;
 }
 
-/* Figure size, under the download buttons. */
-.export-size {
-  margin-top: 5px;
-  font-size: 0.72rem;
-  padding: 2px 4px;
+/*
+  A select living inside a segmented control, as the right-hand half of the
+  Figure button. Styled to read as part of the group rather than as a control
+  parked next to it — the size it holds only means anything when Figure is
+  pressed.
+*/
+.seg-select {
+  border: 0;
+  border-left: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  padding: 7px 8px;
   min-height: 0;
-  max-width: 100%;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  max-width: 11em;
+}
+
+.seg-select:disabled {
+  opacity: 0.55;
 }
 
 /* The date window beside the season chart's view selector. */
