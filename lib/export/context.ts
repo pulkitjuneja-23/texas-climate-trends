@@ -33,16 +33,30 @@ export function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/**
+ * Where this file came from, for the CSV's provenance block.
+ *
+ * READ FROM THE LIVE PAGE, NOT HARDCODED — this used to be a literal string,
+ * and a literal is wrong the moment a domain changes. An exported CSV outlives
+ * the session by years: it lands in a spreadsheet on somebody's desk, or in a
+ * thesis appendix, and nobody goes back to correct the address inside it. So
+ * the file names the address the reader actually used, which is the one they
+ * can get back to, and it stays right through any future move without anyone
+ * remembering to edit this file.
+ *
+ * The fallback only applies if this is ever called outside a browser, which
+ * today it never is — both callers are client components.
+ */
+function siteUrl(): string {
+  if (typeof window !== "undefined" && window.location?.origin) {
+    return window.location.origin;
+  }
+  return "https://texas-climate-trends.vercel.app";
+}
+
 /** The `#` comment block at the top of every CSV. */
 export function csvHeader(ctx: ExportContext | undefined, extra: string[] = []): string[] {
-  /*
-    The NAME has changed twice; the URL never has. The deployment is still
-    texas-climate-trends.vercel.app, and printing anything else in an exported
-    file would send the reader to a page that does not exist.
-  */
-  const lines = [
-    "Texas Weather Explorer — https://texas-climate-trends.vercel.app",
-  ];
+  const lines = [`Texas Weather Explorer — ${siteUrl()}`];
   if (!ctx) return [...lines, ...extra, `Exported: ${today()}`];
 
   if (ctx.placeName) lines.push(`Location: ${ctx.placeName}`);

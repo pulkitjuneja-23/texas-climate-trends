@@ -27,6 +27,41 @@ separate "deploy" step any more.
 > `texas-climate-trends-pulkitjuneja-23.vercel.app`. Those are private test builds and will show a
 > Vercel login page — that is normal and not a fault. Share only the short link above.
 
+---
+
+## The custom domain — `farmwth.com` (in progress, 18 Sep 2026)
+
+Registered at Cloudflare. Both `farmwth.com` and `www.farmwth.com` are added in Vercel, and the
+two CNAME records are in Cloudflare pointing at `80122c051715fcef.vercel-dns-017.com`, both set
+to **DNS only** (grey cloud), which is what Vercel's own panel asks for.
+
+**DNS is working** — `farmwth.com` resolves to Vercel (216.198.79.65) and Vercel answers.
+
+**Not finished yet**, and the remaining steps are deliberately on hold:
+
+1. **Confirm it serves from outside this network.** The author's organisation currently blocks the
+   new domain, so nothing on the office network — including the tools used to build this — can
+   test it. Check from a phone on mobile data instead.
+2. **Decide which address is the real one.** Vercel currently has `www.farmwth.com` as production
+   with `farmwth.com` redirecting to it. The plain `farmwth.com` is the better choice — shorter,
+   and it is what people type — so flip that round in **Settings → Domains** before anything
+   starts printing it.
+3. **Then, and only then, redirect the old address.** A rule sending
+   `texas-climate-trends.vercel.app` to the new domain is what makes it ONE address instead of two
+   serving the same pages.
+
+> **Why step 3 waits.** That redirect sends every existing visitor to the new domain. If the new
+> domain is unreachable for anyone — as it is for the author's own office right now — the redirect
+> takes the whole site down for them, and the working address is the very thing it throws away.
+> The old link keeps working perfectly in the meantime, so there is nothing to gain by rushing it.
+
+**What is already safe.** The address printed inside every exported CSV is no longer a hardcoded
+string; it is read from whatever address the reader is actually on. So an export made from the new
+domain names the new domain, one made from the old names the old, and neither can rot.
+
+**What must not be renamed**, whatever the site is called: the Vercel URL, the GitHub repo slug,
+`GEE_PROJECT_ID`, the R2 bucket, and the Supabase project. Other systems resolve those.
+
 The rest of this file explains what all of that means, and is worth reading once.
 
 ---
