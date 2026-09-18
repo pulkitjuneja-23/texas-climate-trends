@@ -15,7 +15,12 @@
  * file serving untouched.
  */
 
-import { locateCounty, COUNTY_INDEX_VERSION, type CountyIndex } from "./county";
+import {
+  locateCounty,
+  COUNTY_INDEX_VERSION,
+  type CountyIndex,
+  type CountyShape,
+} from "./county";
 import {
   YIELD_STORE_VERSION,
   YIELD_STORE_KEY,
@@ -103,6 +108,28 @@ export async function readCountyOnly(
   // The store holds the tidier display names; fall back to the index's own.
   const store = await getStore();
   return { fips: county.fips, name: store?.countyNames[county.fips] ?? county.name };
+}
+
+/**
+ * Every Texas county's shape and display name.
+ *
+ * For the visitor map, which shades all 254 counties rather than locating a
+ * single point. It reuses the same cached index, so on a warm server this costs
+ * no network call at all.
+ *
+ * SERVER-SIDE ONLY, like everything else here — the raw index is close to a
+ * megabyte. The caller is expected to simplify and project it into path data
+ * before any of it reaches a browser. See lib/analytics/choropleth.ts.
+ */
+export async function readAllCounties(): Promise<CountyShape[] | null> {
+  const [index, store] = await Promise.all([getCountyIndex(), getStore()]);
+  if (!index) return null;
+  // The store carries the tidier display names ("De Witt", not "DEWITT");
+  // fall back to the index's own where it has none.
+  return index.counties.map((c) => ({
+    ...c,
+    name: store?.countyNames[c.fips] ?? c.name,
+  }));
 }
 
 /**

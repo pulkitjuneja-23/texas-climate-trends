@@ -1884,6 +1884,60 @@ genuinely right (checked by hand, e.g. `scripts/verify-current.mts`), re-run wit
 **If the website check goes red** while the refresh is green, suspect the cache or Earth Engine,
 not Idaho.
 
+### 2026-09-18 — The visit log was never switched on; private insights page added
+
+**The visit log had recorded nothing since it shipped on 29 August.** The `visits` table
+was never created in Supabase — the one manual step in `SETUP-ANALYTICS.md`. Every write
+returned `PGRST205 Could not find the table 'public.visits'`, which `logVisit` handles
+exactly as designed: one `console.warn` into the Vercel function log, and on with the page.
+Three weeks of lookups are gone and cannot be backfilled.
+
+**The lesson is about which side stays quiet.** The write side must never break a page load,
+so silence there is correct and stays. The READ side is the opposite — it exists to say what
+the log holds, and an empty map is indistinguishable from a broken database unless something
+says which. `lib/analytics/summary.ts` therefore returns an `error` STRING rather than
+throwing or returning zeros, and the page prints it: "the table does not exist yet", "the
+database did not answer within ten seconds". **Any telemetry that fails silently on write
+needs a reader that fails loudly.**
+
+#### `/insights` — private, server-rendered, no client JavaScript
+
+Guarded by `INSIGHTS_KEY` in a query parameter, compared with `timingSafeEqual`, and
+**`notFound()` on any mismatch** — a 404 rather than a 401, so the page's existence is not
+advertised. Unset key also 404s: it fails closed. The honest limit (a secret in the URL lands
+in history) is documented for the user rather than hidden; what is behind it is county counts
+with nothing personal in it, so the exposure is small and stated.
+
+- **546 B of client JS** — it is one server component. Keeping it that way is not tidiness:
+  the map needs the ~1 MB county boundary index, and a client component touching that is the
+  26 August bundling trap again, which `tsc` cannot see. A page with no client component
+  cannot hit it.
+- `readAllCounties()` added to `lib/yield/read.ts`, reusing the same cached index as the
+  point lookup.
+- `lib/analytics/choropleth.ts` projects to SVG on the server: **243 KB of stored geometry
+  becomes 53 KB of path data.** A second Douglas-Peucker pass at 0.01° is not redundant with
+  the stored 0.003° — one governs whether a field lands in the right county, the other
+  whether the outline looks like Texas at 900 px. Equirectangular with longitude squeezed by
+  cos(mid-latitude); dropping that term makes Texas visibly too wide.
+- **Bins double (1, 2-3, 4-7, …, 32+) and zero is not a bin.** Visit counts are heavily
+  skewed, so equal-width bins would put nearly every county in the first one; doubling needs
+  no tuning as the numbers grow from single digits to thousands. A county nobody looked at is
+  a different statement from one looked at once.
+- **The page paints its own light ground and ignores the theme.** Same reasoning as the
+  analog year swatches: a sequential ramp is only legible against one end of the lightness
+  range, and on a dark surface the deepest bins — the busiest counties — would vanish.
+- CSS module rather than `globals.css`, so one private page adds nothing to every grower's
+  download.
+
+**Verified, not assumed.** Build clean. Guard checked live: no key → 404, wrong key → 404,
+right key → 200. Projection checked by rendering all 254 counties to PNG and looking at it —
+the outline is Texas, and Dallam/El Paso/Cameron/Newton land at the four extremes (x=31%/y=2%,
+x=3%/y=45%, x=70%/y=97%, x=98%/y=54%). Aspect ratio 900×854 matches the bbox arithmetic.
+
+**Two numbers on that page will be misread if the caveats are ever dropped**, so they are
+printed on it: it counts LOOKUPS not people (no visitor id of any kind exists), and it is
+COUNTY resolution and can never be finer, because the coordinate is resolved and discarded.
+
 ## Next up
 
 Items 1, 4 and 7 of the original list are done (gridMET as a source, OpenET, shipped to Vercel).

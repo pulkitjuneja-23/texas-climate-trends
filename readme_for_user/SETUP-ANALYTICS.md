@@ -70,9 +70,59 @@ site already knows how to write to it, using the same credentials as the cache.
 
 ---
 
+## Part 3 — The insights page (the map)
+
+There is a private page on the site that draws all of this for you: headline
+counts, a map of Texas shaded by how often each county has been looked up, a
+ranked table, and an activity strip for the last 60 days. It reads the table
+above, so it needs nothing else set up.
+
+It is hidden behind a password in the link. Without the right link the page
+returns an ordinary "not found", exactly as if it did not exist.
+
+### Switching it on
+
+1. Go to **https://vercel.com/dashboard**, open the project
+2. **Settings → Environment Variables**
+3. Add one:
+
+   | Name | Value |
+   |---|---|
+   | `INSIGHTS_KEY` | a long random string — treat it like a password |
+
+4. Tick all three environments (Production, Preview, Development)
+5. **Redeploy** — Vercel only picks up new settings on the next deploy.
+   **Deployments → ⋯ → Redeploy** is the quickest way.
+
+Then open, using whatever you put in the box:
+
+```
+https://texas-climate-trends.vercel.app/insights?key=YOUR-KEY-HERE
+```
+
+Bookmark that. It works on a phone.
+
+### Honest limits of that password
+
+It sits in the web address, so it will be in your browser history, and it would
+be visible to anyone you handed a screenshot of the address bar to. Change it
+whenever you like — set a new value in Vercel, redeploy, and the old link stops
+working immediately.
+
+That is a deliberate trade rather than an oversight. Proper login accounts are a
+Vercel paid feature, and what is behind this page is county-level visit counts
+with nothing personal in it by construction. The worst a leak could do is tell
+somebody that the Panhandle is busier than the Valley.
+
+**If you forget to set `INSIGHTS_KEY` the page simply 404s.** It fails closed,
+so an unset password can never leave it open.
+
+---
+
 ## Reading the results
 
-Back in the **SQL Editor**, paste any of these.
+The insights page covers most of this. For anything it does not show, go back to
+the **SQL Editor** and paste any of these.
 
 ### How many visits, by day
 

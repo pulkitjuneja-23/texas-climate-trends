@@ -1,0 +1,318 @@
+/*
+ * Private insights page.
+ *
+ * THIS PAGE PAINTS ITS OWN LIGHT GROUND AND DOES NOT FOLLOW THE THEME. The
+ * choropleth ramp is fixed hex running pale to deep — the same decision, for
+ * the same reason, as the analog panel's year swatches. A sequential ramp can
+ * only be legible against one end of the lightness range: on a dark surface its
+ * deepest bins disappear into the background, which would make the busiest
+ * counties the hardest to see. Committing to a light ground keeps the map
+ * honest in both, and means a screenshot of it looks the same wherever it ends
+ * up.
+ *
+ * A CSS module rather than globals.css: this is one private page, and every
+ * rule added to the global sheet is downloaded by every grower who opens the
+ * site.
+ */
+
+.page {
+  --ink: #17170f;
+  --ink-soft: #5d5c52;
+  --ink-faint: #8a897e;
+  --paper: #ffffff;
+  --ground: #f5f2ea;
+  --rule: rgba(23, 23, 15, 0.12);
+
+  background: var(--ground);
+  color: var(--ink);
+  min-height: 100vh;
+  padding: 28px 20px 64px;
+  font: 14px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.page > * {
+  max-width: 980px;
+  margin-inline: auto;
+}
+
+.head {
+  margin-bottom: 22px;
+}
+
+.head h1 {
+  font-size: 1.6rem;
+  font-weight: 650;
+  margin: 0 0 2px;
+  letter-spacing: -0.01em;
+}
+
+.sub {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+/* ---- the "nothing here" / "something is wrong" card ---------------------- */
+
+.problem {
+  background: #fff8e6;
+  border: 1px solid #e8cf8a;
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin-bottom: 22px;
+}
+
+.problem h2 {
+  font-size: 1rem;
+  font-weight: 650;
+  margin: 0 0 6px;
+}
+
+.problem p {
+  margin: 0;
+  color: #5c4a1c;
+}
+
+/* ---- headline figures ---------------------------------------------------- */
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.stat {
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  /* Grid children default to min-width:auto and refuse to shrink below their
+     content — the same trap the mobile tiles hit on 25 August. */
+  min-width: 0;
+}
+
+.statN {
+  font-size: 1.5rem;
+  font-weight: 650;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.statL {
+  color: var(--ink-soft);
+  font-size: 0.83rem;
+}
+
+.statF {
+  color: var(--ink-faint);
+  font-size: 0.76rem;
+  margin-top: 2px;
+}
+
+/* ---- cards --------------------------------------------------------------- */
+
+.card {
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  padding: 16px 18px 18px;
+  margin-bottom: 18px;
+}
+
+.cardHead {
+  margin-bottom: 12px;
+}
+
+.cardHead h2 {
+  font-size: 1rem;
+  font-weight: 650;
+  margin: 0;
+}
+
+.note {
+  margin: 4px 0 0;
+  color: var(--ink-soft);
+  font-size: 0.87rem;
+}
+
+.hint {
+  margin: 6px 0 0;
+  color: var(--ink-faint);
+  font-size: 0.8rem;
+}
+
+/* ---- map ----------------------------------------------------------------- */
+
+.mapWrap {
+  /* The only element allowed to exceed the viewport, and it carries its own
+     scroller — the page body must never scroll sideways. */
+  overflow-x: auto;
+}
+
+.map {
+  display: block;
+  width: 100%;
+  min-width: 460px;
+  height: auto;
+}
+
+.county {
+  stroke: #8f8e85;
+  stroke-width: 0.5;
+  /* Keeps hairline county lines from thickening when the SVG is scaled up. */
+  vector-effect: non-scaling-stroke;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin-top: 12px;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+.legendL {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.key {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.key i {
+  width: 22px;
+  height: 12px;
+  border: 1px solid rgba(23, 23, 15, 0.22);
+  border-radius: 2px;
+  display: inline-block;
+}
+
+/* ---- activity strip ------------------------------------------------------ */
+
+.strip {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 84px;
+}
+
+.bar {
+  flex: 1 1 0;
+  min-width: 0;
+  background: #4a8cc4;
+  border-radius: 2px 2px 0 0;
+}
+
+.stripAxis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 0.78rem;
+  color: var(--ink-faint);
+}
+
+/* ---- tables -------------------------------------------------------------- */
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--ink-soft);
+  border-bottom: 1px solid var(--rule);
+  padding: 6px 10px 6px 0;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 6px 10px 6px 0;
+  border-bottom: 1px solid rgba(23, 23, 15, 0.06);
+  white-space: nowrap;
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid rgba(23, 23, 15, 0.22);
+  margin-right: 8px;
+  vertical-align: baseline;
+}
+
+/* ---- footnotes ----------------------------------------------------------- */
+
+.footnotes {
+  border-top: 1px solid var(--rule);
+  padding-top: 16px;
+  color: var(--ink-soft);
+  font-size: 0.87rem;
+}
+
+.footnotes h2 {
+  font-size: 0.92rem;
+  font-weight: 650;
+  color: var(--ink);
+  margin: 0 0 8px;
+}
+
+.footnotes ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.footnotes li {
+  margin-bottom: 7px;
+}
+
+.footnotes strong {
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.footnotes code,
+.problem code {
+  background: rgba(23, 23, 15, 0.06);
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 0.92em;
+}
+
+@media (max-width: 620px) {
+  .page {
+    padding: 20px 14px 48px;
+  }
+
+  .head h1 {
+    font-size: 1.35rem;
+  }
+
+  .statN {
+    font-size: 1.3rem;
+  }
+}
