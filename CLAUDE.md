@@ -2006,6 +2006,36 @@ ever wanted, ingest the real list to R2 beside the county index.**
   visitor, a new one, a deep session, a privacy browser with no code, an out-of-Texas click and
   a self-marked visit.
 
+### 2026-09-18 — Vercel silently skipped a push
+
+Two commits went up forty minutes apart. The first deployed; **the second never appeared in the
+Deployments list at all** — no failed build, no queued build, nothing. There is no `vercel.json`
+and no Ignored Build Step in this project, so nothing asked for it to be skipped: the GitHub
+webhook was simply missed.
+
+**How it was diagnosed without dashboard access**, which is the reusable part. Probe the live
+site for something that exists ONLY in the missing commit:
+
+```
+POST /api/event   -> 404   (route added in the missing commit)
+GET  /            -> no "What we record" paragraph (footer added in the missing commit)
+git rev-parse origin/main -> the commit IS on GitHub
+```
+
+Together those separate the three candidates — push failed, build failed, deploy skipped —
+without seeing a single Vercel screen. **A missing feature on a live site is not evidence of a
+bad build; check the deployed COMMIT first.**
+
+**The fix is another commit.** A `Redeploy` from the dashboard re-runs the deployment it is
+attached to, which is the OLD commit, so it cannot recover from this — that is the trap. Only a
+new push pulls the newer tree.
+
+**Also note the ordering rule this exposed:** `INSIGHTS_KEY` and any other environment variable
+must exist in Vercel BEFORE the deployment that needs it. Vercel binds project settings at
+deploy time, so adding a variable afterwards does nothing until the next build. A page guarded
+by an unset key fails closed and returns a plain 404, which is correct security and indistinguishable
+from a route that was never deployed — so check both together.
+
 ## Next up
 
 Items 1, 4 and 7 of the original list are done (gridMET as a source, OpenET, shipped to Vercel).
