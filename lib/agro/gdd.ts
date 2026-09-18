@@ -113,19 +113,29 @@ export const GDD_PRESETS: Record<
  * April. They are a better starting point than 1 January, not a substitute for
  * the grower setting their own date, and the UI says so.
  *
- * WINTER WHEAT IS THE AWKWARD ONE. It is planted in the autumn and harvested
- * the following summer, so its real window crosses the year boundary — which
- * the season-to-date machinery cannot represent, since it accumulates within
- * one calendar year. October is its true planting month; for most of the year
- * that date lies in the future, and `plantingStart` falls back to 1 January
- * rather than showing an empty tile. That fallback is a limitation, not a
- * recommendation.
+ * WINTER WHEAT USED TO BE THE AWKWARD ONE, AND NO LONGER IS. It is planted in
+ * autumn and harvested the following summer, so its real window crosses 31
+ * December. The season-to-date machinery could not represent that — it
+ * accumulated inside one calendar year — so this fell back to 1 January and
+ * quietly reported something nobody asked for. That fallback was recorded here
+ * as a limitation rather than a recommendation.
+ *
+ * Since the season window became two absolute dates (18 September 2026) the
+ * limitation is gone, so this now returns THE MOST RECENT OCCURRENCE of the
+ * planting date. For wheat in September that is last October, which is the
+ * season actually in the ground. For corn in September it is this March,
+ * unchanged.
+ *
+ * The one behaviour that did change: corn asked for in January or February now
+ * starts at LAST March rather than 1 January. That is the season that has just
+ * finished, which is a real answer, where "since New Year" for a summer crop
+ * was never one.
  */
 export function plantingStart(presetKey: string, year: number, lastObserved?: string | null): string {
   const md = GDD_PRESETS[presetKey]?.planting ?? "01-01";
   const candidate = `${year}-${md}`;
-  // A planting date that has not arrived yet would accumulate nothing at all.
-  if (lastObserved && candidate > lastObserved) return `${year}-01-01`;
+  // Not yet arrived this year, so the season underway began last year.
+  if (lastObserved && candidate > lastObserved) return `${year - 1}-${md}`;
   return candidate;
 }
 

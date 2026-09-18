@@ -63,6 +63,18 @@ export interface YearSeries {
   values: (number | null)[];
 }
 
+/**
+ * One day's value for a field, deriving the computed ones.
+ *
+ * Exported because the season-so-far tiles read a window of ABSOLUTE dates
+ * that may cross a year boundary, so they cannot use the year-aligned
+ * structure below — but they must extract exactly the same numbers from a
+ * record, or a tile and the chart beside it would disagree.
+ */
+export function fieldValue(r: DailyRecord, field: Field, gddCfg: GddConfig): number | null {
+  return valueOf(r, field, gddCfg);
+}
+
 function valueOf(r: DailyRecord, field: Field, gddCfg: GddConfig): number | null {
   if (field === "gdd") return dailyGdd(r.tmax, r.tmin, gddCfg);
   /**

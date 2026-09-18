@@ -2120,6 +2120,40 @@ reason. Verified with 8 years selected: 10 lines, 7 distinct colours, no disable
 renders in both selector locations and the tile reads "GDD · base 50°F"; exports measured at
 1050 / 2100 / 2752 px wide; and the single-column PNG was pulled out of the browser and looked at.
 
+### 2026-09-18 (later) — Season windows became absolute dates; winter wheat now works
+
+User asked why the "Season so far" calendar would not go before 2026, and wanted any date, past
+or present. Answering it removed a limitation this file had recorded as unfixable.
+
+**`makeStat` no longer indexes a 366-slot day-of-year array.** It walks the calendar between two
+absolute dates, and the comparison window for an earlier year is the same window **shifted back
+whole years** — which keeps MM-DD alignment (the standing rule) and keeps working across 31
+December, because both ends move together.
+
+Two ordinary things were impossible before and now are not:
+- **Reading a finished season.** 1 Mar – 30 Sep 2019 now reports 23.3 in, +2.0 vs normal.
+- **WINTER WHEAT.** Planted October, harvested the following summer, so its window crosses the
+  year boundary. It used to fall back to 1 January and quietly report something nobody asked for.
+  Verified: 1 Oct 2025 – 30 Jun 2026 returns 27.0 in, −2.2 vs normal.
+
+`plantingStart` now returns **the most recent occurrence** of the planting date rather than
+falling back to 1 January, so selecting wheat in September defaults to last October — the season
+actually in the ground. One behaviour changed as a side effect: corn asked for in January or
+February now starts at LAST March rather than 1 January. That is the season just finished, which
+is a real answer where "since New Year" for a summer crop never was.
+
+**REGRESSION CHECK THAT MATTERS:** the default window returns numbers identical to the old
+implementation — 20.6 in / −0.6 vs normal, 5,187 GDD / +481. A rewrite of the arithmetic behind
+four tiles has to be shown not to have moved them, not assumed.
+
+Baseline years are now filtered by whether **their own window** is complete (not truncated by a
+gap, ≥90% of days present) rather than by the whole-year `hasLongGap` / `startsWithin` pair. Same
+intent, and it applies correctly to a window that does not start on 1 January.
+
+**Still open, deliberately:** the end date defaults to "latest" for every crop, so wheat keeps
+accumulating past harvest until the reader sets 30 June. Whether a crop should carry a default
+END date as well as a start is an agronomic call, not a coding one.
+
 ## Next up
 
 Items 1, 4 and 7 of the original list are done (gridMET as a source, OpenET, shipped to Vercel).

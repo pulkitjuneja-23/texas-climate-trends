@@ -11,10 +11,9 @@ import {
   alignByYear,
   accumulate,
   accumClimatology,
-  KEY_INDEX,
-  DOY_KEYS,
   hasLongGap,
   startsWithin,
+  fieldValue,
   type Field,
 } from "@/lib/agro/climatology";
 import { convert, unitLabel, type UnitSystem } from "@/lib/agro/units";
@@ -612,61 +611,121 @@ export default function Page() {
   }, [records]);
 
   /**
-   * Accumulated total from a chosen start date to the last observed day, with
-   * the same window averaged across all prior years for comparison.
+   * Accumulated total over an ARBITRARY date window, with the same window in
+   * each earlier year for comparison.
+   *
+   * ---------------------------------------------------------------------------
+   * WHY THIS WORKS ON REAL DATES AND NOT ON DAY-OF-YEAR
+   * ---------------------------------------------------------------------------
+   * It used to index a 366-slot array keyed on MM-DD, one array per calendar
+   * year, which is why the date boxes were locked to the current year. That
+   * made two ordinary things impossible.
+   *
+   * A grower could not look at a season that has finished. And no window could
+   * cross 31 December — which is not an edge case, it is WINTER WHEAT: planted
+   * in October, harvested the following summer. Wheat silently fell back to
+   * 1 January and quietly reported something nobody asked for.
+   *
+   * So the window is now two absolute dates and the sum walks the calendar
+   * between them. The comparison window for an earlier year is the same window
+   * shifted back whole years, which keeps it aligned on MM-DD — the project's
+   * standing rule — and keeps working across a year boundary, because both ends
+   * move together.
    */
   const makeStat = useCallback(
-    (f: Field, sinceISO: string, untilISO: string | null) => {
+    (f: Field, fromISO: string, untilISO: string | null) => {
       if (!records.length || !history?.lastObserved) return null;
-      const observedIdx = KEY_INDEX.get(history.lastObserved.slice(5, 10));
-      const startIdx = KEY_INDEX.get(sinceISO.slice(5, 10));
-      if (observedIdx === undefined || startIdx === undefined) return null;
 
-      /**
-       * The window never runs past the last day there is data for.
-       *
-       * A chosen end date in the future is not an error to refuse — a grower
-       * setting their whole season up front will naturally pick a harvest date
-       * that has not arrived. It just means "as far as you can get", so it is
-       * clamped, and the tile's existing `stale` flag already tells the reader
-       * where the numbers actually stop.
-       */
-      const chosenIdx = untilISO ? KEY_INDEX.get(untilISO.slice(5, 10)) : undefined;
-      const endIdx = chosenIdx === undefined ? observedIdx : Math.min(chosenIdx, observedIdx);
-      if (startIdx > endIdx) return null;
-
-      const series = alignByYear(records, f, gddConfig);
-      const baseline = series.filter((s) => s.year < currentYear);
-      const cur = series.find((s) => s.year === currentYear);
-      if (!cur || !baseline.length) return null;
-
-      /**
-       * Same gap rule as the chart. OpenET drops whole months, and running the
-       * total straight through a two-month hole would report, say, 14.8 in of
-       * ET "through Jul 31" when April and May are simply absent — roughly 9 in
-       * short, making the deficit look far more comfortable than it is. Stop at
-       * the gap and let the tile say how far it actually got.
-       */
-      const isMonthlySource = f === "et" || f === "balance";
-      const maxGap = isMonthlySource ? 5 : Infinity;
-
-      const accum = accumulate(cur, startIdx, maxGap).values;
-
-      /**
-       * `lastObserved` is the last day with ANY reading, but an individual
-       * variable can be missing on that day — an airport station reports
-       * today's temperature long before the day's rainfall total is closed out.
-       * Indexing straight at `lastObserved` then lands on a null and the tile
-       * silently shows a dash. Walk back to the last day this variable actually
-       * has, and read the normal at that same calendar day so the two stay
-       * comparable.
-       */
-      let idx = endIdx;
-      while (idx > startIdx && (accum[idx] === null || !Number.isFinite(accum[idx] as number))) {
-        idx--;
+      const byDate = new Map<string, number | null>();
+      for (const r of records) {
+        byDate.set(r.date.slice(0, 10), fieldValue(r, f, gddConfig));
       }
-      const value = accum[idx];
-      if (value === null || !Number.isFinite(value)) return null;
+
+      const observed = history.lastObserved.slice(0, 10);
+      /**
+       * Never past the last day there is data for.
+       *
+       * A chosen end in the future is not an error to refuse — someone setting
+       * up a whole season will naturally pick a harvest date that has not
+       * arrived. It means "as far as you can get", so it is clamped and the
+       * `stale` flag tells the reader where the numbers actually stop.
+       */
+      const to = untilISO && untilISO < observed ? untilISO : observed;
+      if (fromISO > to) return null;
+
+      /**
+       * OpenET drops whole months when cloud defeats its interpolation, so a
+       * water total must STOP at a real hole rather than coast through it —
+       * otherwise a season reads ~9 in short and the irrigation deficit looks
+       * comfortable when it is not. Weather fields are daily-complete, so they
+       * carry straight through.
+       */
+      const maxGap = f === "et" || f === "balance" ? 5 : Infinity;
+
+      const nextDay = (iso: string) => {
+        const d = new Date(`${iso}T12:00:00Z`);
+        d.setUTCDate(d.getUTCDate() + 1);
+        return d.toISOString().slice(0, 10);
+      };
+
+      /** Sum one window, stopping at a gap longer than `maxGap`. */
+      const sumWindow = (from: string, end: string) => {
+        let total = 0;
+        let present = 0;
+        let span = 0;
+        let gap = 0;
+        let lastGood: string | null = null;
+        let truncated = false;
+
+        for (let d = from; d <= end; d = nextDay(d)) {
+          span++;
+          const v = byDate.get(d);
+          if (v === null || v === undefined || !Number.isFinite(v)) {
+            gap++;
+            if (gap > maxGap) {
+              truncated = true;
+              break;
+            }
+          } else {
+            gap = 0;
+            total += v;
+            present++;
+            lastGood = d;
+          }
+        }
+
+        if (lastGood === null) return null;
+
+        // On truncation the span must stop where the numbers do, or coverage
+        // would be measured against days the total never reached.
+        if (truncated) {
+          span = 0;
+          for (let d = from; d <= lastGood; d = nextDay(d)) span++;
+        }
+        return { total, present, span, lastGood, truncated };
+      };
+
+      const cur = sumWindow(fromISO, to);
+      if (!cur) return null;
+
+      /** The same window, whole years earlier. Both ends move together. */
+      const shift = (iso: string, years: number) =>
+        `${Number(iso.slice(0, 4)) - years}${iso.slice(4)}`;
+
+      const firstYear = Number(records[0].date.slice(0, 4));
+      const normals: number[] = [];
+      for (let k = 1; k <= 40; k++) {
+        const bFrom = shift(fromISO, k);
+        if (Number(bFrom.slice(0, 4)) < firstYear) break;
+        const b = sumWindow(bFrom, shift(to, k));
+        // A comparison year is only usable if it is reasonably complete —
+        // otherwise a half-covered year drags the normal down and every
+        // comparison against it flatters the current season.
+        if (!b || b.truncated) continue;
+        if (b.span === 0 || b.present / b.span < 0.9) continue;
+        normals.push(b.total);
+      }
+      if (!normals.length) return null;
 
       /**
        * COVERAGE GUARD — the reason a season total can be badly wrong.
@@ -681,39 +740,19 @@ export default function Page() {
        * COMPARISON is what lies. So count the days actually present and let the
        * tile drop the vs-normal line and say what is missing instead.
        */
-      let present = 0;
-      let span = 0;
-      for (let i = startIdx; i <= idx; i++) {
-        span++;
-        const v = cur.values[i];
-        if (v !== null && Number.isFinite(v)) present++;
-      }
-      // 02-29 is legitimately absent in non-leap years, so allow a little slack.
-      const coverage = span > 0 ? present / span : 0;
-
-      // Compare against years that actually have a complete record, or the
-      // "normal" is an average of half-finished seasons.
-      const normBase = isMonthlySource
-        ? baseline.filter(
-            (s) =>
-              s.values.some((v) => v !== null) &&
-              !hasLongGap(s, maxGap) &&
-              startsWithin(s, startIdx, maxGap)
-          )
-        : baseline;
-      if (!normBase.length) return null;
-
-      const norm = accumClimatology(normBase, startIdx, maxGap)[idx];
-      if (!norm || norm.mean === null) return null;
+      const coverage = cur.span > 0 ? cur.present / cur.span : 0;
 
       return {
-        value,
-        normal: norm.mean,
-        throughIdx: idx,
-        stale: idx < endIdx,
+        value: cur.total,
+        normal: normals.reduce((a, b) => a + b, 0) / normals.length,
+        /** Years the comparison is actually built from, not the years asked for. */
+        normalYears: normals.length,
+        /** The last day the total really reached. */
+        throughDate: cur.lastGood,
+        stale: cur.lastGood < to,
         coverage,
-        daysPresent: present,
-        daysExpected: span,
+        daysPresent: cur.present,
+        daysExpected: cur.span,
         /**
          * Threshold set at 90%, not higher, on purpose.
          *
@@ -730,7 +769,7 @@ export default function Page() {
         sparse: coverage < 0.9,
       };
     },
-    [records, history?.lastObserved, gddConfig, currentYear]
+    [records, history?.lastObserved, gddConfig]
   );
 
   const rainStat = useMemo(
@@ -849,25 +888,11 @@ export default function Page() {
    * "-4.4 in deficit" is nonsense unless the reader knows the last two cover a
    * SHORTER period. So any tile whose data ends early says so.
    */
-  const monthDay = useCallback((key: string | undefined) => {
-    if (!key) return null;
-    const [mm, dd] = key.split("-");
-    const name = new Date(Date.UTC(2000, Number(mm) - 1, 1)).toLocaleDateString("en-US", {
-      month: "short",
-      timeZone: "UTC",
-    });
-    return `${name} ${Number(dd)}`;
-  }, []);
-
-  const throughLabel = useCallback(
-    (idx: number | undefined) => monthDay(idx === undefined ? undefined : DOY_KEYS[idx]),
-    [monthDay]
-  );
-
   /** The range a truncated water tile actually covers, honouring the chosen start date. */
   const etRangeLabel = useCallback(
-    (idx: number | undefined) => `${monthDay(seasonFrom.slice(5))} – ${throughLabel(idx)} only`,
-    [monthDay, throughLabel, seasonFrom]
+    (through: string | undefined) =>
+      `${formatDate(seasonFrom)} – ${through ? formatDate(through) : "?"} only`,
+    [seasonFrom]
   );
 
   /**
@@ -878,16 +903,15 @@ export default function Page() {
    * reasonable in the first place.
    */
   const seasonRangeLabel = useMemo(() => {
-    const from = monthDay(seasonFrom.slice(5));
     const observed = history?.lastObserved ?? null;
     // Null means "to the newest day", and so does an end date that has not
     // arrived — in both cases the honest label is the last day with data.
-    const effectiveTo =
-      seasonTo && observed && seasonTo < observed ? seasonTo : observed;
-    const to = effectiveTo ? monthDay(effectiveTo.slice(5, 10)) : null;
-    if (!from || !to) return null;
-    return `${from} – ${to}`;
-  }, [monthDay, seasonFrom, seasonTo, history?.lastObserved]);
+    const effectiveTo = seasonTo && observed && seasonTo < observed ? seasonTo : observed;
+    if (!effectiveTo) return null;
+    // Full dates, not month-and-day: a window may now start in one year and
+    // finish in the next, and "Oct 1 – Jun 30" would not say which.
+    return formatRange(seasonFrom, effectiveTo);
+  }, [seasonFrom, seasonTo, history?.lastObserved]);
 
   const precipDp = units === "imperial" ? 1 : 0;
 
@@ -1109,8 +1133,7 @@ export default function Page() {
                     type="date"
                     aria-label="Season window start"
                     value={seasonFrom}
-                    min={`${currentYear}-01-01`}
-                    max={seasonTo ?? `${currentYear}-12-31`}
+                    max={seasonTo ?? undefined}
                     onChange={(e) => {
                       setSeasonFrom(e.target.value);
                       setSeasonFromTouched(true);
@@ -1124,7 +1147,6 @@ export default function Page() {
                     aria-label="Season window end, blank for the latest day available"
                     value={seasonTo ?? ""}
                     min={seasonFrom}
-                    max={`${currentYear}-12-31`}
                     onChange={(e) => setSeasonTo(e.target.value || null)}
                   />
                 </label>
@@ -1256,7 +1278,7 @@ export default function Page() {
                     >
                       {etStat
                         ? etStat.stale
-                          ? etRangeLabel(etStat.throughIdx)
+                          ? etRangeLabel(etStat.throughDate)
                           : "water used by the crop"
                         : "needs satellite data"}
                     </div>
@@ -1308,7 +1330,7 @@ export default function Page() {
                         style={{ marginTop: 3, fontSize: "0.68rem", color: "var(--div-warm)" }}
                         title="The satellite could not measure some months (too cloudy), so the comparison stops there."
                       >
-                        {etRangeLabel(balanceStat.throughIdx)}
+                        {etRangeLabel(balanceStat.throughDate)}
                       </div>
                     )}
                   </div>
