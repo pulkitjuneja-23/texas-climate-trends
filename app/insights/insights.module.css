@@ -265,6 +265,164 @@
   vertical-align: baseline;
 }
 
+/* ---- sub-headings and two-up layout -------------------------------------- */
+
+.h3 {
+  font-size: 0.83rem;
+  font-weight: 650;
+  color: var(--ink-soft);
+  margin: 0 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+/*
+  Two columns on a wide screen, one on a narrow one. `minmax(0, 1fr)` rather
+  than `1fr`: a grid track's default minimum is its content, so a long bar label
+  would push the column wider than the card instead of ellipsing inside it.
+*/
+.two {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+  gap: 18px 28px;
+  margin-top: 14px;
+}
+
+/* ---- horizontal bar lists ------------------------------------------------ */
+
+.bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.bars li {
+  display: grid;
+  grid-template-columns: minmax(0, 11em) 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 0;
+}
+
+.barLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.86rem;
+}
+
+.barTrack {
+  background: rgba(23, 23, 15, 0.06);
+  border-radius: 3px;
+  height: 14px;
+  min-width: 0;
+}
+
+.barFill {
+  display: block;
+  height: 100%;
+  background: #4a8cc4;
+  border-radius: 3px;
+  /* A row with a real but tiny value must still be visible as a mark rather
+     than reading as zero. */
+  min-width: 3px;
+}
+
+.barN {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.86rem;
+  white-space: nowrap;
+}
+
+.barPct {
+  color: var(--ink-faint);
+  font-size: 0.8rem;
+}
+
+/* ---- new vs returning ---------------------------------------------------- */
+
+.split {
+  display: flex;
+  height: 26px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(23, 23, 15, 0.06);
+}
+
+.splitNew {
+  background: #2a68a6;
+}
+
+.splitOld {
+  background: #8fbfe0;
+}
+
+.splitKey {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  margin-top: 8px;
+  font-size: 0.86rem;
+  color: var(--ink-soft);
+}
+
+.splitKey i {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+
+.swNew {
+  background: #2a68a6;
+}
+
+.swOld {
+  background: #8fbfe0;
+}
+
+/* ---- hour-of-day and weekday cycles -------------------------------------- */
+
+.cycle {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+}
+
+.cycleCol {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.cycleBarWrap {
+  height: 70px;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+
+.cycleBar {
+  width: 100%;
+  background: #4a8cc4;
+  border-radius: 2px 2px 0 0;
+}
+
+.cycleTick {
+  font-size: 0.7rem;
+  color: var(--ink-faint);
+  margin-top: 4px;
+  white-space: nowrap;
+}
+
+.soft {
+  color: var(--ink-faint);
+}
+
 /* ---- footnotes ----------------------------------------------------------- */
 
 .footnotes {

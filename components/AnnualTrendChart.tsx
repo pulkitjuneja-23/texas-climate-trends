@@ -338,7 +338,12 @@ export default function AnnualTrendChart({
           </button>
         </div>
 
-        <ChartExport chartRef={chartRef} buildCsv={csvForChart} buildFigure={figureForChart} />
+        <ChartExport
+          chartRef={chartRef}
+          buildCsv={csvForChart}
+          buildFigure={figureForChart}
+          chartId="trend"
+        />
       </div>
 
       {isWaterField && waterLoading && (

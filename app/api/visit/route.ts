@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { readCountyOnly } from "@/lib/yield/read";
 import { logVisit } from "@/lib/analytics/visits";
 import { validateLatLon } from "@/lib/geo";
+import { envelopeFrom, beaconOk } from "../_beacon";
 
 /**
  * POST /api/visit — record that someone looked at a location.
@@ -29,43 +30,24 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  /**
-   * Always 204, whatever happens.
-   *
-   * The caller is a fire-and-forget beacon from a page that has already
-   * rendered. There is no failure here worth telling a browser about, and
-   * returning an error status would only produce noise in someone's console
-   * about a feature that is none of their concern.
-   */
-  const ok = () =>
-    new NextResponse(null, {
-      status: 204,
-      headers: { "Cache-Control": "no-store" },
-    });
-
   try {
-    const body = (await req.json()) as {
-      lat?: unknown;
-      lon?: unknown;
-      source?: unknown;
-      self?: unknown;
-    };
+    const body = (await req.json()) as Record<string, unknown>;
 
     const { lat, lon } = validateLatLon(String(body.lat ?? ""), String(body.lon ?? ""));
     const county = await readCountyOnly(lat, lon);
 
     await logVisit({
+      ...envelopeFrom(body),
       countyFips: county?.fips ?? null,
       countyName: county?.name ?? null,
-      // Bounded so a malformed or hostile body cannot write a novel into the
-      // table; the real values are short ids like "gridmet".
-      source: typeof body.source === "string" ? body.source.slice(0, 32) : null,
-      self: body.self === true,
+      source: typeof body.source === "string" ? body.source : null,
+      via: typeof body.via === "string" ? body.via : null,
+      referrer: typeof body.referrer === "string" ? body.referrer : null,
     });
   } catch {
     // Includes a bad body, a point outside the valid range, and a database
     // that is down. None of them are the visitor's problem.
   }
 
-  return ok();
+  return beaconOk();
 }

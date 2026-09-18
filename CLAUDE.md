@@ -1938,6 +1938,74 @@ x=3%/y=45%, x=70%/y=97%, x=98%/y=54%). Aspect ratio 900×854 matches the bbox ar
 printed on it: it counts LOOKUPS not people (no visitor id of any kind exists), and it is
 COUNTY resolution and can never be finer, because the coordinate is resolved and discarded.
 
+### 2026-09-18 (later) — Counting people, and what they came for
+
+User wanted breadth: distinct users, new versus returning, graphs, "so we can understand what
+areas need more extension work". The first of those could not be answered at all, because the
+original design stored no identifier of any kind — deliberately. Put to the user as an
+explicit decision; they chose a persistent anonymous code.
+
+**`lib/analytics/visitor.ts` — a random code in localStorage.** Derived from nothing: no IP,
+no user agent, no fingerprint. It identifies a BROWSER, never a person, and there is nothing
+else stored that it could be joined to. The cost is real and is stated rather than buried —
+**a plain sentence in the site's own footer says the site does this**, and that sentence is
+part of the feature. Do not delete it while the module exists.
+
+County-only is UNCHANGED and must stay: the coordinate is still resolved and discarded.
+
+**A second table, `events`,** for what people do rather than where they look — panel,
+variable, crop, dataset, units, downloads. **Deduplicated per session in the browser**, so a
+row means "in this sitting, somebody opened the forecast" rather than counting clicks. The
+reader counts DISTINCT SESSIONS for the same reason, so a privacy-mode browser that cannot
+dedupe locally does not get extra weight.
+
+#### THE MIGRATION TRAP, AND THE FALLBACK BOTH SIDES NOW HAVE
+
+Code deploys the instant it is pushed; an `alter table` is a human pasting SQL into a
+dashboard, possibly days later. In that window every insert carrying a new column is rejected
+with PGRST204 and **every lookup in it would be lost — the same failure that had just cost
+three weeks, wearing a different error code.** So:
+
+- **Write side:** a rejected insert is retried ONCE with only the columns that have always
+  existed. New detail is lost for those rows; the visit is not.
+- **Read side:** a select that fails with Postgres 42703 drops to the legacy column list and
+  restarts paging, and the page says *the database is older than the site* with the fix.
+
+**Verified against the real database in exactly that state** — new columns absent, `events`
+absent: beacons returned 204, the row landed in `visits` via the fallback, and the page
+rendered with both warnings and correct county figures. **Any future column added here needs
+the same pair.**
+
+#### THE REGION ROLLUP WAS BUILT AND THEN DELETED — do not rebuild it naively
+
+A by-part-of-Texas chart is the obvious thing to want and every mechanical version of it lies:
+- **Equal thirds of the bounding box** put Bell County in "East Texas", because El Paso drags
+  the western edge out.
+- **Thirds by county density** fixed Bell and Lubbock but filed **Austin, Corpus Christi and
+  the Rio Grande Valley together as "South Central"**, and El Paso as "West Central".
+
+The correct grouping is the AgriLife extension districts, which are a published 254-county
+list this repository does not have; writing one from memory would be right for most counties
+and quietly wrong for some. A confident wrong answer is worse than a coarse right one, so the
+map is the geographic answer and the county card states only what can be counted: the share in
+the top five counties, and how many of the 254 have never been looked at. **If districts are
+ever wanted, ingest the real list to R2 beside the county index.**
+
+#### Also
+
+- Screen class is measured from the VIEWPORT at the site's own 620 px breakpoint, so it reports
+  the layout the visitor actually saw, not the hardware they own.
+- Hour and weekday come from the VISITOR's clock, sent with the beacon. Texas spans two time
+  zones, so UTC — or assuming Central — puts El Paso's morning in the wrong place.
+- Referrer is stored as a HOST, never a full URL: a referring address can carry a search query
+  or a private path.
+- New-versus-returning is **labelled unreadable for its first 30 days**, because until then
+  nobody can be returning and a 100% "new" share is a fact about the calendar, not a finding.
+- Still no client component on `/insights` — 794 B of JS, every chart plain markup.
+- `fold()` is exported and pure, and was checked against a synthetic log covering a returning
+  visitor, a new one, a deep session, a privacy browser with no code, an out-of-Texas click and
+  a self-marked visit.
+
 ## Next up
 
 Items 1, 4 and 7 of the original list are done (gridMET as a source, OpenET, shipped to Vercel).

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import type { Place } from "@/lib/types";
 import { TEXAS_CENTER, parseCoords } from "@/lib/geo";
+import type { PickMethod } from "@/lib/analytics/visitor";
 
 /**
  * Leaflet touches `window` at import time, so the map must be client-only.
@@ -17,7 +18,12 @@ type Mode = "search" | "coords";
 
 interface Props {
   place: Place;
-  onChange: (p: Place) => void;
+  /**
+   * `via` says which of the four ways the grower used to get here. It is
+   * telemetry context only — nothing on screen depends on it — which is why it
+   * is optional and defaulted rather than threaded through as required.
+   */
+  onChange: (p: Place, via?: PickMethod) => void;
   /** Grid cell of the active source, drawn on the map. Null for stations. */
   cellSize?: { lat: number; lon: number } | null;
   /** Crop the GDD base belongs to — the one non-location setting in this card. */
@@ -108,26 +114,33 @@ export default function LocationPicker({
   }
 
   function choose(h: SearchHit) {
-    onChange({ lat: h.lat, lon: h.lon, label: h.label, county: h.county });
+    onChange({ lat: h.lat, lon: h.lon, label: h.label, county: h.county }, "search");
     setQuery("");
     setHits([]);
     setOpen(false);
   }
 
-  async function reverseLabel(lat: number, lon: number, fallback: string) {
-    onChange({ lat, lon, label: fallback });
+  /**
+   * `via` is carried through both calls because this fires onChange twice — the
+   * coordinate label first so the map responds immediately, then the real place
+   * name once Nominatim answers. The second call has the same coordinates, so
+   * the visit beacon does not fire again; passing `via` anyway keeps the two
+   * consistent if that ever changes.
+   */
+  async function reverseLabel(lat: number, lon: number, fallback: string, via: PickMethod) {
+    onChange({ lat, lon, label: fallback }, via);
     try {
       const res = await fetch(`/api/geocode?lat=${lat}&lon=${lon}`);
       const json = await res.json();
       const hit = json.results?.[0];
-      if (hit?.label) onChange({ lat, lon, label: hit.label, county: hit.county });
+      if (hit?.label) onChange({ lat, lon, label: hit.label, county: hit.county }, via);
     } catch {
       /* keep the coordinate label */
     }
   }
 
   function handleMapPick(lat: number, lon: number) {
-    void reverseLabel(lat, lon, `${lat.toFixed(3)}°, ${lon.toFixed(3)}°`);
+    void reverseLabel(lat, lon, `${lat.toFixed(3)}°, ${lon.toFixed(3)}°`, "map");
   }
 
   function submitCoords() {
@@ -140,7 +153,8 @@ export default function LocationPicker({
     void reverseLabel(
       Number(parsed.lat.toFixed(5)),
       Number(parsed.lon.toFixed(5)),
-      `${parsed.lat.toFixed(3)}°, ${parsed.lon.toFixed(3)}°`
+      `${parsed.lat.toFixed(3)}°, ${parsed.lon.toFixed(3)}°`,
+      "coords"
     );
   }
 
@@ -157,7 +171,7 @@ export default function LocationPicker({
         setLocating(false);
         const lat = Number(pos.coords.latitude.toFixed(5));
         const lon = Number(pos.coords.longitude.toFixed(5));
-        void reverseLabel(lat, lon, `${lat.toFixed(3)}°, ${lon.toFixed(3)}°`);
+        void reverseLabel(lat, lon, `${lat.toFixed(3)}°, ${lon.toFixed(3)}°`, "gps");
       },
       (err) => {
         setLocating(false);

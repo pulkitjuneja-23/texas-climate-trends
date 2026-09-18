@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { downloadChartPng, type FigureMeta } from "@/lib/export/figure";
 import { downloadCsv } from "@/lib/export/csv";
+import { trackOnce } from "@/lib/analytics/client";
 
 /**
  * Download buttons for a chart: the data behind it, and the figure itself.
@@ -22,9 +23,16 @@ interface Props {
   /** Built at click time so it always reflects current state. */
   buildCsv: () => { csv: string; filename: string };
   buildFigure: () => { meta: FigureMeta; filename: string };
+  /**
+   * Which chart these buttons belong to, for the feature log — "season" or
+   * "trend". A download is the strongest signal on the site that somebody is
+   * doing real work with it rather than glancing, so it is worth knowing which
+   * chart earns them.
+   */
+  chartId: string;
 }
 
-export default function ChartExport({ chartRef, buildCsv, buildFigure }: Props) {
+export default function ChartExport({ chartRef, buildCsv, buildFigure, chartId }: Props) {
   const [busy, setBusy] = useState<null | "csv" | "png">(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,6 +41,9 @@ export default function ChartExport({ chartRef, buildCsv, buildFigure }: Props) 
     try {
       const { csv, filename } = buildCsv();
       downloadCsv(csv, filename);
+      // Only after the download is actually handed over — recording the intent
+      // would count failures as successes.
+      trackOnce("export", `csv:${chartId}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -48,6 +59,7 @@ export default function ChartExport({ chartRef, buildCsv, buildFigure }: Props) 
     try {
       const { meta, filename } = buildFigure();
       await downloadChartPng(chartRef.current, filename, meta);
+      trackOnce("export", `figure:${chartId}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

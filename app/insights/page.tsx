@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { timingSafeEqual } from "node:crypto";
 import type { Metadata } from "next";
 
-import { readVisitSummary } from "@/lib/analytics/summary";
+import { readAnalytics, RECENT_DAYS, type Tally } from "@/lib/analytics/summary";
 import { readAllCounties } from "@/lib/yield/read";
 import { projectCounties, fillFor, BINS, NO_DATA_FILL } from "@/lib/analytics/choropleth";
 import { formatDate } from "@/lib/format/date";
@@ -14,19 +14,20 @@ import s from "./insights.module.css";
  * ---------------------------------------------------------------------------
  * WHAT THIS ANSWERS, AND WHAT IT CANNOT
  * ---------------------------------------------------------------------------
- * Vercel's free plan gives page views and visitor counts but puts the one
- * useful question — WHICH FIELDS are people looking up — behind a Pro-only
- * custom event, and keeps only a rolling month. The visit log answers it for
- * nothing and keeps it forever. This page is how that log is read.
+ * Vercel's free plan gives page views and a rough daily visitor count, but puts
+ * the questions actually worth answering — which fields people look up, and
+ * what they came to do — behind a Pro-only custom event, and keeps only a
+ * rolling month. The two logs here answer them for nothing and keep them
+ * forever.
  *
  * It is COUNTY RESOLUTION and can never be finer, because the coordinate is
- * resolved to a county on the server and then discarded — someone's field is
- * not written down anywhere. See lib/analytics/visits.ts for that decision.
+ * resolved to a county on the server and then discarded. See
+ * lib/analytics/visits.ts for that decision.
  *
- * It counts LOOKUPS, NOT PEOPLE. There is no visitor id of any kind, so one
- * grower moving the pin across five fields is indistinguishable from five
- * growers. Both limits are printed on the page, because a number like this gets
- * quoted later without its caveats attached.
+ * Since 18 September 2026 it can also count PEOPLE rather than only lookups,
+ * using a random per-browser code. The limits of that are printed on the page
+ * rather than left to be discovered: a code is a browser, so one grower with a
+ * phone and a laptop is two, and clearing site data makes somebody new.
  *
  * ---------------------------------------------------------------------------
  * HOW IT IS GUARDED
@@ -35,15 +36,9 @@ import s from "./insights.module.css";
  * or the wrong one, the route renders the ordinary 404 — not a login prompt and
  * not a 401, so the page's existence is not advertised to anyone guessing.
  *
- * The honest limits of that: a query-string secret lands in browser history and
- * would travel in a Referer header to any third-party request this page made.
- * It makes none. The data behind it is county-level visit counts with nothing
- * personal in it by construction, so the consequence of a leak is that someone
- * learns the Panhandle is busier than the Valley.
- *
- * NO CLIENT COMPONENT ANYWHERE. The map is server-rendered SVG with native
- * <title> tooltips, which keeps the megabyte of boundary geometry on the server
- * and sidesteps the bundling trap documented in CLAUDE.md for 26 August.
+ * NO CLIENT COMPONENT ANYWHERE. Every chart is markup the server already knows
+ * the numbers for. That keeps the megabyte of county geometry on the server and
+ * sidesteps the bundling trap documented in CLAUDE.md for 26 August.
  */
 
 export const dynamic = "force-dynamic";
@@ -51,8 +46,6 @@ export const revalidate = 0;
 
 export const metadata: Metadata = {
   title: "Visitor insights",
-  // Belt and braces. Without the key this 404s, so a crawler could not index it
-  // anyway — but if the link is ever pasted somewhere public, this still holds.
   robots: { index: false, follow: false },
 };
 
@@ -72,13 +65,137 @@ function tokenMatches(given: string | undefined, expected: string): boolean {
 }
 
 const MAP_WIDTH = 900;
-/** Days of history in the activity strip. Longer than this stops being read. */
 const STRIP_DAYS = 60;
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/**
+ * Ids are what the app stores; these are what a person reads.
+ *
+ * Anything missing falls through to the raw id rather than being hidden, so a
+ * newly tracked value shows up as soon as it is recorded instead of silently
+ * vanishing from the chart until someone remembers to add it here.
+ */
+const LABELS: Record<string, string> = {
+  // panels
+  season: "Season tracker",
+  analog: "Similar years",
+  forecast: "Forecast",
+  trend: "Year-by-year trend",
+  // variables
+  precip: "Rainfall",
+  tmax: "Daily high",
+  tmin: "Daily low",
+  tmean: "Mean temperature",
+  gdd: "Growing degree days",
+  dtr: "Day-night range",
+  et: "Water used (ET)",
+  balance: "Water balance",
+  eto: "Reference ET",
+  // crops
+  corn: "Corn / sorghum",
+  cotton: "Cotton",
+  wheat: "Wheat",
+  // how the pin got there
+  map: "Clicked the map",
+  search: "Searched a town",
+  coords: "Typed coordinates",
+  gps: "Used device GPS",
+  link: "Opened a shared link",
+  default: "Did not choose (landed on the default)",
+  // screens
+  phone: "Phone",
+  tablet: "Tablet",
+  desktop: "Desktop",
+  // units
+  imperial: "Inches and °F",
+  metric: "Millimetres and °C",
+  // sources
+  gridmet: "gridMET",
+  nasapower: "NASA POWER",
+  daymet: "Daymet",
+  stations: "Airport stations",
+  openmeteo: "Open-Meteo",
+  // exports
+  "csv:season": "CSV — season tracker",
+  "csv:trend": "CSV — year-by-year",
+  "figure:season": "Figure — season tracker",
+  "figure:trend": "Figure — year-by-year",
+};
+
+const KIND_TITLES: Record<string, string> = {
+  panel: "Which panel they opened",
+  variable: "Which variable on the season chart",
+  trend: "Which variable on the year-by-year chart",
+  crop: "Which crop, when looking at growing degree days",
+  source: "Which dataset",
+  units: "Which units",
+  export: "What they downloaded",
+};
+
+const KIND_ORDER = ["panel", "variable", "export", "trend", "crop", "source", "units"];
+
+function label(id: string): string {
+  return LABELS[id] ?? id;
+}
 
 function pct(n: number, of: number): string {
   if (!of) return "0%";
   const v = (n / of) * 100;
   return v >= 10 ? `${Math.round(v)}%` : `${v.toFixed(1)}%`;
+}
+
+/** A horizontal bar list. Shares are of `of`, which is not always the sum. */
+function BarList({
+  items,
+  of,
+  empty = "Nothing recorded yet.",
+}: {
+  items: Tally[];
+  of: number;
+  empty?: string;
+}) {
+  if (!items.length || !of) return <p className={s.note}>{empty}</p>;
+  const max = Math.max(...items.map((i) => i.n), 1);
+  return (
+    <ul className={s.bars}>
+      {items.map((i) => (
+        <li key={i.key}>
+          <span className={s.barLabel}>{label(i.key)}</span>
+          <span className={s.barTrack}>
+            {/* Width is relative to the LARGEST row so short bars stay readable;
+                the number beside it is the share of the real total. */}
+            <span className={s.barFill} style={{ width: `${(i.n / max) * 100}%` }} />
+          </span>
+          <span className={s.barN}>
+            {i.n.toLocaleString()} <span className={s.barPct}>{pct(i.n, of)}</span>
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Vertical bars for a fixed-length cycle: hours of the day, days of the week. */
+function Cycle({ values, ticks }: { values: number[]; ticks: string[] }) {
+  const max = Math.max(...values, 1);
+  const total = values.reduce((a, b) => a + b, 0);
+  if (!total) return <p className={s.note}>Nothing recorded yet.</p>;
+  return (
+    <div className={s.cycle}>
+      {values.map((v, i) => (
+        <div key={i} className={s.cycleCol}>
+          <div className={s.cycleBarWrap}>
+            <div
+              className={s.cycleBar}
+              style={{ height: `${Math.max(v ? 4 : 0, (v / max) * 100)}%` }}
+              title={`${ticks[i]} — ${v} ${v === 1 ? "lookup" : "lookups"}`}
+            />
+          </div>
+          <span className={s.cycleTick}>{ticks[i]}</span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default async function InsightsPage({
@@ -88,13 +205,13 @@ export default async function InsightsPage({
 }) {
   const expected = process.env.INSIGHTS_KEY;
   const given = searchParams.key;
-  if (!expected || tokenMatches(typeof given === "string" ? given : undefined, expected) === false) {
+  if (!expected || !tokenMatches(typeof given === "string" ? given : undefined, expected)) {
     notFound();
   }
 
-  const [summary, counties] = await Promise.all([readVisitSummary(), readAllCounties()]);
+  const [a, counties] = await Promise.all([readAnalytics(), readAllCounties()]);
 
-  if (summary.error) {
+  if (a.error) {
     return (
       <main className={s.page}>
         <header className={s.head}>
@@ -103,28 +220,54 @@ export default async function InsightsPage({
         </header>
         <div className={s.problem}>
           <h2>Nothing to show yet</h2>
-          <p>{summary.error}</p>
+          <p>{a.error}</p>
         </div>
       </main>
     );
   }
 
-  const counts = new Map(summary.byCounty.map((c) => [c.fips, c.lookups]));
+  const counts = new Map(a.byCounty.map((c) => [c.fips, c.lookups]));
   const map = counties ? projectCounties(counties, MAP_WIDTH) : null;
+  const texasLookups = a.lookups - a.outsideTexas;
 
-  // The activity strip is a fixed window ending today, with silent days drawn
-  // as gaps rather than omitted — a run of nothing is information, and a chart
-  // that only plots the days something happened hides it completely.
+  /*
+    HOW CONCENTRATED IS THE INTEREST?
+
+    This replaced a region rollup, which was built and then removed on
+    18 September 2026. Every mechanical way of cutting Texas into named regions
+    produced labels that contradict what anyone here knows — equal thirds of the
+    bounding box put Bell County in "East Texas" because El Paso drags the
+    western edge out, and cutting by county density instead filed Austin, Corpus
+    Christi and the Valley together as "South Central". The real answer is the
+    AgriLife extension districts, which are a published list this repository
+    does not have. A confident wrong answer is worse than a coarse right one, so
+    the map stays as the geographic answer and this says only what can be
+    counted: how concentrated use is, and how much of the state it has not
+    reached.
+  */
+  const top5 = a.byCounty.slice(0, 5).reduce((sum, c) => sum + c.lookups, 0);
+  const countiesUntouched = 254 - a.byCounty.length;
+
   const today = new Date();
+  const byDayMap = new Map(a.byDay.map((d) => [d.day, d.n]));
   const strip: Array<{ day: string; n: number }> = [];
-  const byDay = new Map(summary.byDay.map((d) => [d.day, d.n]));
   for (let i = STRIP_DAYS - 1; i >= 0; i--) {
     const d = new Date(today.getTime() - i * 86_400_000).toISOString().slice(0, 10);
-    strip.push({ day: d, n: byDay.get(d) ?? 0 });
+    strip.push({ day: d, n: byDayMap.get(d) ?? 0 });
   }
   const stripMax = Math.max(1, ...strip.map((d) => d.n));
 
-  const texasLookups = summary.total - summary.outsideTexas;
+  /*
+    Is the new-versus-returning split old enough to mean anything?
+
+    For the first RECENT_DAYS after visitor codes shipped, everyone is
+    necessarily new — there is no earlier record for anyone to be returning
+    from. Showing "100% new" then would be a fact about the calendar dressed up
+    as a finding, so it is labelled instead of drawn.
+  */
+  const trackingAge = a.firstAt ? (Date.now() - Date.parse(a.firstAt)) / 86_400_000 : 0;
+  const splitIsMeaningful = trackingAge >= RECENT_DAYS;
+  const active30 = a.newVisitors + a.returningVisitors;
 
   return (
     <main className={s.page}>
@@ -132,49 +275,117 @@ export default async function InsightsPage({
         <h1>Visitor insights</h1>
         <p className={s.sub}>
           Texas Weather Explorer — private.{" "}
-          {summary.firstAt
-            ? `Recording since ${formatDate(summary.firstAt)}.`
-            : "Nothing recorded yet."}
+          {a.firstAt ? `Recording since ${formatDate(a.firstAt)}.` : "Nothing recorded yet."}
         </p>
       </header>
 
-      {summary.total === 0 && (
+      {a.warnings.map((w) => (
+        <div key={w} className={s.problem}>
+          <p>{w}</p>
+        </div>
+      ))}
+
+      {a.lookups === 0 && (
         <div className={s.problem}>
           <h2>The log is empty</h2>
           <p>
-            The table exists and can be read, but no visits have been recorded.
-            That is expected if it was only just created — recording starts with
-            the next person who opens the site, and your own browser is excluded
-            if you have marked it with <code>?notme=1</code>.
+            The tables exist and can be read, but no visits have been recorded.
+            That is expected if they were only just created — recording starts
+            with the next person who opens the site, and your own browser is
+            excluded if you have marked it with <code>?notme=1</code>.
           </p>
         </div>
       )}
 
+      {/* ---- headline ---- */}
       <section className={s.stats}>
         <div className={s.stat}>
-          <span className={s.statN}>{summary.total.toLocaleString()}</span>
-          <span className={s.statL}>lookups</span>
+          <span className={s.statN}>{a.visitors.toLocaleString()}</span>
+          <span className={s.statL}>people</span>
+          <span className={s.statF}>distinct browsers, all time</span>
         </div>
         <div className={s.stat}>
-          <span className={s.statN}>{summary.byCounty.length}</span>
+          <span className={s.statN}>{a.lookups.toLocaleString()}</span>
+          <span className={s.statL}>lookups</span>
+          <span className={s.statF}>{a.sessions.toLocaleString()} separate sittings</span>
+        </div>
+        <div className={s.stat}>
+          <span className={s.statN}>{a.visitors7.toLocaleString()}</span>
+          <span className={s.statL}>people, last 7 days</span>
+          <span className={s.statF}>{a.lookups7.toLocaleString()} lookups</span>
+        </div>
+        <div className={s.stat}>
+          <span className={s.statN}>{a.visitors30.toLocaleString()}</span>
+          <span className={s.statL}>people, last 30 days</span>
+          <span className={s.statF}>{a.lookups30.toLocaleString()} lookups</span>
+        </div>
+        <div className={s.stat}>
+          <span className={s.statN}>{a.byCounty.length}</span>
           <span className={s.statL}>counties reached</span>
           <span className={s.statF}>of 254</span>
         </div>
         <div className={s.stat}>
-          <span className={s.statN}>{summary.last7.toLocaleString()}</span>
-          <span className={s.statL}>last 7 days</span>
-        </div>
-        <div className={s.stat}>
-          <span className={s.statN}>{summary.last30.toLocaleString()}</span>
-          <span className={s.statL}>last 30 days</span>
-        </div>
-        <div className={s.stat}>
-          <span className={s.statN}>{summary.outsideTexas.toLocaleString()}</span>
-          <span className={s.statL}>outside Texas</span>
-          <span className={s.statF}>{pct(summary.outsideTexas, summary.total)} of lookups</span>
+          <span className={s.statN}>{a.outsideTexas.toLocaleString()}</span>
+          <span className={s.statL}>clicks outside Texas</span>
+          <span className={s.statF}>{pct(a.outsideTexas, a.lookups)} of lookups</span>
         </div>
       </section>
 
+      {/* ---- new vs returning ---- */}
+      <section className={s.card}>
+        <div className={s.cardHead}>
+          <h2>New and returning, last {RECENT_DAYS} days</h2>
+          {!splitIsMeaningful && (
+            <p className={s.note}>
+              <strong>Too early to read.</strong> Visitor codes have only been
+              running {`${Math.floor(trackingAge)} day${Math.floor(trackingAge) === 1 ? "" : "s"}`},
+              so nobody <em>can</em> be returning from before that. This becomes
+              meaningful once there is more than {RECENT_DAYS} days of history.
+            </p>
+          )}
+        </div>
+        {active30 > 0 ? (
+          <>
+            <div className={s.split}>
+              <div
+                className={s.splitNew}
+                style={{ flexGrow: Math.max(a.newVisitors, 0.001) }}
+                title={`${a.newVisitors} new`}
+              />
+              <div
+                className={s.splitOld}
+                style={{ flexGrow: Math.max(a.returningVisitors, 0.001) }}
+                title={`${a.returningVisitors} returning`}
+              />
+            </div>
+            <div className={s.splitKey}>
+              <span>
+                <i className={s.swNew} /> {a.newVisitors.toLocaleString()} first time here (
+                {pct(a.newVisitors, active30)})
+              </span>
+              <span>
+                <i className={s.swOld} /> {a.returningVisitors.toLocaleString()} came back (
+                {pct(a.returningVisitors, active30)})
+              </span>
+            </div>
+          </>
+        ) : (
+          <p className={s.note}>No visitors in the last {RECENT_DAYS} days.</p>
+        )}
+
+        <div className={s.two}>
+          <div>
+            <h3 className={s.h3}>How many sittings each person has had</h3>
+            <BarList items={a.loyalty.filter((l) => l.n > 0)} of={a.visitors} />
+          </div>
+          <div>
+            <h3 className={s.h3}>How many fields they check in one sitting</h3>
+            <BarList items={a.depth.filter((d) => d.n > 0)} of={a.sessions} />
+          </div>
+        </div>
+      </section>
+
+      {/* ---- the map ---- */}
       <section className={s.card}>
         <div className={s.cardHead}>
           <h2>Where people looked</h2>
@@ -223,11 +434,53 @@ export default async function InsightsPage({
         ) : (
           <p className={s.note}>
             The county boundary file could not be read from R2, so the map cannot
-            be drawn. The table below is unaffected.
+            be drawn. Everything below is unaffected.
           </p>
         )}
       </section>
 
+      {a.byCounty.length > 0 && (
+        <section className={s.card}>
+          <div className={s.cardHead}>
+            <h2>Counties, most looked at first</h2>
+            <p className={s.note}>
+              The five busiest counties account for{" "}
+              <strong>{pct(top5, texasLookups)}</strong> of all Texas lookups.{" "}
+              <strong>{countiesUntouched}</strong> of the 254 counties have never
+              been looked at — the clearest list of where this has not reached yet.
+            </p>
+          </div>
+          <div className={s.tableWrap}>
+            <table className={s.table}>
+              <thead>
+                <tr>
+                  <th>County</th>
+                  <th className={s.num}>Lookups</th>
+                  <th className={s.num}>People</th>
+                  <th className={s.num}>Share</th>
+                  <th>Most recent</th>
+                </tr>
+              </thead>
+              <tbody>
+                {a.byCounty.map((c) => (
+                  <tr key={c.fips}>
+                    <td>
+                      <i className={s.swatch} style={{ background: fillFor(c.lookups) }} />
+                      {c.name}
+                    </td>
+                    <td className={s.num}>{c.lookups.toLocaleString()}</td>
+                    <td className={s.num}>{c.visitors.toLocaleString()}</td>
+                    <td className={s.num}>{pct(c.lookups, texasLookups)}</td>
+                    <td>{formatDate(c.lastAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {/* ---- over time ---- */}
       <section className={s.card}>
         <div className={s.cardHead}>
           <h2>Activity, last {STRIP_DAYS} days</h2>
@@ -247,92 +500,152 @@ export default async function InsightsPage({
           <span>peak {stripMax}/day</span>
           <span>{formatDate(strip[strip.length - 1].day)}</span>
         </div>
-      </section>
 
-      {summary.byCounty.length > 0 && (
-        <section className={s.card}>
-          <div className={s.cardHead}>
-            <h2>Counties, most looked at first</h2>
-          </div>
-          <div className={s.tableWrap}>
+        {a.byMonth.length > 1 && (
+          <div className={s.tableWrap} style={{ marginTop: 16 }}>
             <table className={s.table}>
               <thead>
                 <tr>
-                  <th>County</th>
+                  <th>Month</th>
                   <th className={s.num}>Lookups</th>
-                  <th className={s.num}>Share</th>
-                  <th>Most recent</th>
+                  <th className={s.num}>People</th>
                 </tr>
               </thead>
               <tbody>
-                {summary.byCounty.map((c) => (
-                  <tr key={c.fips}>
-                    <td>
-                      <i className={s.swatch} style={{ background: fillFor(c.lookups) }} />
-                      {c.name}
-                    </td>
-                    <td className={s.num}>{c.lookups.toLocaleString()}</td>
-                    <td className={s.num}>{pct(c.lookups, texasLookups)}</td>
-                    <td>{formatDate(c.lastAt)}</td>
+                {[...a.byMonth].reverse().map((m) => (
+                  <tr key={m.month}>
+                    <td>{formatDate(`${m.month}-01`).replace(/ \d+,/, "")}</td>
+                    <td className={s.num}>{m.lookups.toLocaleString()}</td>
+                    <td className={s.num}>{m.visitors.toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </section>
-      )}
+        )}
+      </section>
 
-      {summary.bySource.length > 0 && (
-        <section className={s.card}>
-          <div className={s.cardHead}>
-            <h2>Dataset selected</h2>
-            <p className={s.note}>
-              Which source was active at the moment of the lookup — almost always
-              the default unless someone changed it.
-            </p>
-          </div>
-          <div className={s.tableWrap}>
-            <table className={s.table}>
-              <tbody>
-                {summary.bySource.map((x) => (
-                  <tr key={x.source}>
-                    <td>{x.source}</td>
-                    <td className={s.num}>{x.n.toLocaleString()}</td>
-                    <td className={s.num}>{pct(x.n, summary.total)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
+      <section className={s.card}>
+        <div className={s.cardHead}>
+          <h2>When they look</h2>
+          <p className={s.note}>
+            The visitor&apos;s own clock, not the server&apos;s — Texas spans two
+            time zones, so UTC would put El Paso&apos;s morning in the wrong place.
+          </p>
+        </div>
+        <h3 className={s.h3}>Hour of day</h3>
+        <Cycle
+          values={a.byHour}
+          ticks={a.byHour.map((_, i) => (i % 3 === 0 ? String(i) : ""))}
+        />
+        <h3 className={s.h3} style={{ marginTop: 18 }}>
+          Day of week
+        </h3>
+        <Cycle values={a.byWeekday} ticks={WEEKDAYS} />
+      </section>
 
+      {/* ---- how they arrived ---- */}
+      <section className={s.card}>
+        <div className={s.cardHead}>
+          <h2>How they arrive</h2>
+        </div>
+        <div className={s.two}>
+          <div>
+            <h3 className={s.h3}>Screen they read it on</h3>
+            <BarList items={a.byScreen} of={a.lookups} />
+          </div>
+          <div>
+            <h3 className={s.h3}>How they placed the pin</h3>
+            <BarList items={a.byVia} of={a.lookups} />
+          </div>
+        </div>
+        <div className={s.two} style={{ marginTop: 6 }}>
+          <div>
+            <h3 className={s.h3}>Dataset selected</h3>
+            <BarList items={a.bySource} of={a.lookups} />
+          </div>
+          <div>
+            <h3 className={s.h3}>Referred from</h3>
+            <BarList
+              items={a.byReferrer.slice(0, 10)}
+              of={a.lookups}
+              empty="Nobody arrived from a link on another site — they typed the address, used a bookmark, or came from an app that sends no referrer (most messaging apps and email clients)."
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* ---- what they came for ---- */}
+      <section className={s.card}>
+        <div className={s.cardHead}>
+          <h2>What they came for</h2>
+          <p className={s.note}>
+            Counted in <strong>sittings</strong>, not clicks — each thing is
+            recorded at most once per visit, so this reads as &ldquo;in what
+            fraction of visits did anyone open this&rdquo; rather than rewarding
+            whoever clicked most. Out of {a.sessionsWithEvents.toLocaleString()}{" "}
+            sittings that recorded anything.
+          </p>
+        </div>
+        {Object.keys(a.features).length === 0 ? (
+          <p className={s.note}>
+            Nothing recorded yet. This fills in as people use the site.
+          </p>
+        ) : (
+          <div className={s.two}>
+            {KIND_ORDER.filter((k) => a.features[k]?.length).map((kind) => (
+              <div key={kind}>
+                <h3 className={s.h3}>{KIND_TITLES[kind] ?? kind}</h3>
+                <BarList items={a.features[kind]} of={a.sessionsWithEvents} />
+              </div>
+            ))}
+            {Object.keys(a.features)
+              .filter((k) => !KIND_ORDER.includes(k))
+              .map((kind) => (
+                <div key={kind}>
+                  <h3 className={s.h3}>{kind}</h3>
+                  <BarList items={a.features[kind]} of={a.sessionsWithEvents} />
+                </div>
+              ))}
+          </div>
+        )}
+      </section>
+
+      {/* ---- caveats ---- */}
       <section className={s.footnotes}>
         <h2>How to read these numbers</h2>
         <ul>
           <li>
-            <strong>Lookups, not people.</strong> There is no visitor id, cookie
-            or IP address in the log. One grower moving the pin across five
-            fields registers five lookups and is indistinguishable from five
-            growers. Treat the totals as interest, never as an audience size.
+            <strong>&ldquo;People&rdquo; means browsers.</strong> One grower who
+            uses a phone in the field and a laptop at home counts as two, and
+            anyone who clears their browsing data becomes somebody new. It is a
+            good estimate, not a headcount — and it is the closest thing to one
+            that does not involve asking people to log in.
+          </li>
+          <li>
+            <strong>{a.unidentified.toLocaleString()} lookups</strong> came from
+            browsers that would not store a code at all (private windows, strict
+            privacy settings). They count in the lookup totals but cannot be
+            attributed to a person, which nudges the visitor count slightly low
+            and the &ldquo;new&rdquo; share slightly high.
           </li>
           <li>
             <strong>County resolution only.</strong> The coordinate is turned
-            into a county on the server and thrown away. Nothing finer exists to
-            map, by design — a typed coordinate is somebody&apos;s field.
+            into a county on the server and thrown away — a typed coordinate is
+            somebody&apos;s field. Nothing finer exists to map, by design.
           </li>
           <li>
-            <strong>One row per location, not per page view.</strong> Changing
-            source, variable or panel at one spot does not add a row.
+            <strong>One lookup per location, not per page view.</strong> Changing
+            source, variable or panel at one spot does not add a lookup.
           </li>
           <li>
-            <strong>{summary.selfTotal.toLocaleString()} lookups</strong> came
-            from browsers marked with <code>?notme=1</code> and are excluded from
+            <strong>{a.selfLookups.toLocaleString()} lookups</strong> came from
+            browsers marked with <code>?notme=1</code> and are excluded from
             every figure above. They are kept rather than dropped so the
             exclusion can be seen to be working — if that number is zero and you
             have been using the site, the mark is not set on this device.
           </li>
-          {summary.truncated && (
+          {a.truncated && (
             <li>
               <strong>The log has outgrown this page.</strong> Only the most
               recent rows were read, so the earliest history is missing from

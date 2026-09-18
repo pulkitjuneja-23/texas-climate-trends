@@ -20,7 +20,8 @@ import {
 import { convert, unitLabel, type UnitSystem } from "@/lib/agro/units";
 import { monthlyEtToDaily, attachWaterFields, balanceWording } from "@/lib/agro/water";
 import { formatDate, formatRange } from "@/lib/format/date";
-import { isSelf, isRealVisit } from "@/lib/analytics/self";
+import { sendVisit, trackOnce } from "@/lib/analytics/client";
+import type { PickMethod } from "@/lib/analytics/visitor";
 import type { MonthlyEt } from "@/lib/sources/openet";
 // The TYPE only — `lib/yield/read` touches process.env and must stay server-side.
 import type { CountyYields } from "@/lib/yield/types";
@@ -152,6 +153,16 @@ export default function Page() {
   const wantScroll = useRef(false);
 
   /**
+   * How the current pin was chosen, for the visit log.
+   *
+   * A ref rather than state: it is context attached to the next beacon, and
+   * making it state would re-render the whole dashboard to record a fact
+   * nothing on screen depends on. It is set before `setPlace` every time, so it
+   * is always current when the beacon effect reads it.
+   */
+  const pickedVia = useRef<PickMethod>("default");
+
+  /**
    * This tool is Texas-only, so a pin dropped outside the state says so rather
    * than quietly serving numbers.
    *
@@ -218,6 +229,10 @@ export default function Page() {
   // Apply ?lat/?lon/?source once, after hydration.
   useEffect(() => {
     const { place: p, source: s, variable: v, trend: t, panel: pn } = readUrlDefaults();
+    // Records how this first location arrived: a shared link that carried
+    // coordinates, or nobody having chosen yet. Both are worth telling apart
+    // from a deliberate map click.
+    pickedVia.current = p ? "link" : "default";
     if (p) setPlace(p);
     if (s) setSourceId(s);
     if (t) setTrendField(t);
@@ -381,29 +396,60 @@ export default function Page() {
    */
   useEffect(() => {
     if (!urlReady) return;
-    if (!isRealVisit()) return;
-
-    const ctrl = new AbortController();
-    fetch("/api/visit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        lat: place.lat,
-        lon: place.lon,
-        source: sourceId,
-        self: isSelf(),
-      }),
-      keepalive: true,
-      signal: ctrl.signal,
-    }).catch(() => {
-      /* telemetry is never worth a visible failure */
+    sendVisit({
+      lat: place.lat,
+      lon: place.lon,
+      source: sourceId,
+      via: pickedVia.current,
     });
-
-    return () => ctrl.abort();
-    // sourceId is read but intentionally NOT a dependency: it is recorded as
-    // context for the visit, not as a reason to record another one.
+    // sourceId and pickedVia are read but intentionally NOT dependencies: they
+    // are recorded as context for the visit, not as a reason to record another.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [place.lat, place.lon, urlReady]);
+
+  /**
+   * ---- feature log ----
+   *
+   * What people actually came for, which the visit log cannot say. Each of
+   * these is recorded at most once per sitting (see lib/analytics/client.ts),
+   * so the figure means "in what fraction of visits did anyone open this"
+   * rather than rewarding whoever clicked most.
+   *
+   * Gated on `urlReady` for the same reason every fetch is: a shared link
+   * applies its state after mount, and firing before that would record the
+   * defaults rather than what the reader was actually sent to.
+   */
+  useEffect(() => {
+    if (!urlReady) return;
+    trackOnce("panel", panel);
+  }, [panel, urlReady]);
+
+  useEffect(() => {
+    if (!urlReady) return;
+    trackOnce("variable", field);
+  }, [field, urlReady]);
+
+  useEffect(() => {
+    if (!urlReady) return;
+    trackOnce("trend", trendField);
+  }, [trendField, urlReady]);
+
+  useEffect(() => {
+    if (!urlReady) return;
+    trackOnce("source", sourceId);
+  }, [sourceId, urlReady]);
+
+  useEffect(() => {
+    if (!urlReady) return;
+    trackOnce("units", units);
+  }, [units, urlReady]);
+
+  useEffect(() => {
+    if (!urlReady || field !== "gdd") return;
+    // Only meaningful while growing degree days are on screen; recorded
+    // otherwise it would count the default crop for everyone who never looked.
+    trackOnce("crop", gddPreset);
+  }, [gddPreset, field, urlReady]);
 
   /**
    * ---- county crop yields (NASS) ----
@@ -650,7 +696,10 @@ export default function Page() {
     };
   }, [records]);
 
-  const handlePlace = useCallback((p: Place) => setPlace(p), []);
+  const handlePlace = useCallback((p: Place, via: PickMethod = "map") => {
+    pickedVia.current = via;
+    setPlace(p);
+  }, []);
 
   /**
    * Put the top of the stage just under the masthead.
@@ -903,7 +952,10 @@ export default function Page() {
                 these figures are all built for Texas. A point past the state line would
                 come back partly empty while still looking like a complete answer.
               </p>
-              <button style={{ marginTop: 4 }} onClick={() => handlePlace({ ...DEFAULT_PLACE })}>
+              <button
+                style={{ marginTop: 4 }}
+                onClick={() => handlePlace({ ...DEFAULT_PLACE }, "default")}
+              >
                 Back to Texas
               </button>
             </div>
@@ -1278,6 +1330,23 @@ export default function Page() {
             seasons against this one; they are not a forecast, and a similar start has often been
             followed by a very different finish. Nothing here is validated against your own rain
             gauge and it should not be the only input to an irrigation or planting decision.
+          </p>
+          {/*
+            REQUIRED WHILE lib/analytics/visitor.ts EXISTS. The site keeps a
+            random code in the visitor's browser so repeat visits can be counted
+            as one person, and that is the kind of thing a person is entitled to
+            be told plainly rather than have buried in a policy nobody opens.
+            Deleting this line without also deleting the code would make the
+            site quietly dishonest.
+          */}
+          <p>
+            <strong>What we record.</strong> To know whether this is useful, the site counts
+            which <em>county</em> each lookup falls in — never the exact point you clicked,
+            which stays on your screen and is thrown away on arrival. It also keeps a random
+            code in your browser so that ten visits from you are not counted as ten different
+            people. That code is not linked to your name, your email or your address, and
+            there is nothing here to link it to. No advertising, and nothing is sold or shared.
+            Add <code>?notme=1</code> to the address to switch all of it off for this browser.
           </p>
         </footer>
       </div>

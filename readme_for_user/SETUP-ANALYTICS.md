@@ -68,14 +68,73 @@ alter table visits enable row level security;
 You should see **Success. No rows returned**. Nothing else to configure — the
 site already knows how to write to it, using the same credentials as the cache.
 
+### Then run this second block
+
+Added 18 September 2026, when the site started counting people rather than only
+lookups. Same place — **SQL Editor → New query** — paste and **Run**. It is safe
+to run more than once, and safe to run even if you already ran the block above.
+
+```sql
+-- Extra context on each lookup.
+alter table visits add column if not exists visitor  text;
+alter table visits add column if not exists session  text;
+alter table visits add column if not exists screen   text;
+alter table visits add column if not exists hour     smallint;
+alter table visits add column if not exists weekday  smallint;
+alter table visits add column if not exists via      text;
+alter table visits add column if not exists referrer text;
+
+create index if not exists visits_visitor_idx on visits (visitor);
+
+-- What people used, as opposed to where they looked.
+create table if not exists events (
+  id       bigint generated always as identity primary key,
+  at       timestamptz not null default now(),
+  kind     text not null,
+  label    text not null,
+  visitor  text,
+  session  text,
+  screen   text,
+  hour     smallint,
+  weekday  smallint,
+  self     boolean not null default false
+);
+
+create index if not exists events_at_idx      on events (at desc);
+create index if not exists events_kind_idx    on events (kind, label);
+create index if not exists events_session_idx on events (session);
+
+alter table events enable row level security;
+```
+
+**If you skip this block**, the site keeps working and keeps recording lookups.
+It notices that the database is older than the code and writes each row without
+the new detail rather than failing — so you lose the extra information, never
+the visit itself. The insights page then says which parts are missing. Run it
+when you can; nothing breaks in the meantime.
+
 ---
 
 ## Part 3 — The insights page (the map)
 
-There is a private page on the site that draws all of this for you: headline
-counts, a map of Texas shaded by how often each county has been looked up, a
-ranked table, and an activity strip for the last 60 days. It reads the table
-above, so it needs nothing else set up.
+There is a private page on the site that draws all of this for you. It reads the
+tables above, so it needs nothing else set up.
+
+What is on it:
+
+- **How many people**, not just how many lookups — distinct browsers, all time
+  and for the last 7 and 30 days
+- **New versus returning** over the last 30 days, how many sittings each person
+  has had, and how many fields they check in one sitting
+- **A map of Texas** shaded by county, a ranked county table with a people
+  column, and a coarse by-part-of-the-state summary
+- **When** they look — hour of day and day of week, on the visitor's own clock
+- **How they arrive** — phone or desktop, how they placed the pin (map click,
+  town search, typed coordinates, GPS, shared link), which dataset, and which
+  site referred them
+- **What they came for** — which panel, which variable, which crop, and what
+  they downloaded, counted in sittings rather than clicks
+- Activity for the last 60 days, and a month-by-month table
 
 It is hidden behind a password in the link. Without the right link the page
 returns an ordinary "not found", exactly as if it did not exist.

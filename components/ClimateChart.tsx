@@ -588,7 +588,12 @@ export default function ClimateChart(props: Props) {
           </button>
         </div>
 
-        <ChartExport chartRef={chartRef} buildCsv={csvForChart} buildFigure={figureForChart} />
+        <ChartExport
+          chartRef={chartRef}
+          buildCsv={csvForChart}
+          buildFigure={figureForChart}
+          chartId="season"
+        />
       </div>
 
       <div className="field" style={{ marginBottom: 14 }}>
