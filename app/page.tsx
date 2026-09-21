@@ -1493,22 +1493,19 @@ export default function Page() {
             gauge and it should not be the only input to an irrigation or planting decision.
           </p>
           {/*
-            REQUIRED WHILE lib/analytics/visitor.ts EXISTS. The site keeps a
-            random code in the visitor's browser so repeat visits can be counted
-            as one person, and that is the kind of thing a person is entitled to
-            be told plainly rather than have buried in a policy nobody opens.
-            Deleting this line without also deleting the code would make the
-            site quietly dishonest.
+            THE "WHAT WE RECORD" PARAGRAPH WAS REMOVED ON 21 SEPTEMBER 2026 AT
+            THE USER'S REQUEST. Recording that here rather than deleting the
+            note silently, because the code it described is still running.
+
+            `lib/analytics/visitor.ts` keeps a random code in each visitor's
+            browser so repeat visits can be counted as one person. That is
+            persistent identification of a browser — harmless in itself, joined
+            to nothing, but the kind of thing a visitor is normally told. The
+            site now does it without saying so anywhere on the page.
+
+            If that disclosure is ever wanted back, it belongs here, and the
+            wording is in the git history of this file.
           */}
-          <p>
-            <strong>What we record.</strong> To know whether this is useful, the site counts
-            which <em>county</em> each lookup falls in — never the exact point you clicked,
-            which stays on your screen and is thrown away on arrival. It also keeps a random
-            code in your browser so that ten visits from you are not counted as ten different
-            people. That code is not linked to your name, your email or your address, and
-            there is nothing here to link it to. No advertising, and nothing is sold or shared.
-            Add <code>?notme=1</code> to the address to switch all of it off for this browser.
-          </p>
         </footer>
       </div>
     </>
