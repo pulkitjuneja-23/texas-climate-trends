@@ -25,7 +25,13 @@ import {
   longestSharedDrySpell,
 } from "../lib/archive/plausibility.ts";
 
-const SITE = (process.argv[2] ?? "https://texas-climate-trends.vercel.app").replace(/\/+$/, "");
+/**
+ * The address a visitor actually uses, so the check exercises the same path
+ * they do. The original `texas-climate-trends.vercel.app` now redirects here,
+ * and while `fetch` would follow that, checking the redirect rather than the
+ * site is one indirection this job does not need.
+ */
+const SITE = (process.argv[2] ?? "https://www.farmwth.com").replace(/\/+$/, "");
 const SOURCE = "gridmet";
 
 /**
