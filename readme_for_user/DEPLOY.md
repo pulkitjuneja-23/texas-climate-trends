@@ -6,9 +6,11 @@ Plain-language guide. No prior knowledge assumed.
 
 ## ✅ ALREADY DONE — the site is live
 
-**https://texas-climate-trends.vercel.app**
+**https://farmwth.com**
 
-Anyone with that link can open it. No login needed.
+Anyone with that link can open it. No login needed. The original address,
+`texas-climate-trends.vercel.app`, still works too and forwards here — so anything you shared
+before the domain existed keeps working.
 
 Code lives at **https://github.com/pulkitjuneja-23/texas-climate-trends** (private).
 
@@ -29,35 +31,46 @@ separate "deploy" step any more.
 
 ---
 
-## The custom domain — `farmwth.com` (in progress, 18 Sep 2026)
+## The custom domain — `farmwth.com` (done, 24 Sep 2026)
 
-Registered at Cloudflare. Both `farmwth.com` and `www.farmwth.com` are added in Vercel, and the
-two CNAME records are in Cloudflare pointing at `80122c051715fcef.vercel-dns-017.com`, both set
-to **DNS only** (grey cloud), which is what Vercel's own panel asks for.
+**The site is live at https://farmwth.com**, which lands on `www.farmwth.com` — that is the
+production domain in Vercel. The original `texas-climate-trends.vercel.app` still works and
+forwards to it, so every link ever shared keeps working.
 
-**DNS is working** — `farmwth.com` resolves to Vercel (216.198.79.65) and Vercel answers.
+**How it is wired.** Registered at Cloudflare. Both `farmwth.com` and `www.farmwth.com` are CNAME
+records pointing at `80122c051715fcef.vercel-dns-017.com`, both set to **DNS only** (the grey
+cloud, not the orange one). Leave them grey: Cloudflare's proxy sitting in front of Vercel stops
+Vercel issuing its HTTPS certificate, and it fails as a certificate warning or a page that
+reloads forever — which looks nothing like a DNS problem and wastes an afternoon.
 
-**Not finished yet**, and the remaining steps are deliberately on hold:
+Cloudflare shows a standing banner recommending you turn proxying on. **Ignore it.** It is an
+advert for Cloudflare's own features, and Vercel's panel explicitly asks for proxy disabled.
 
-1. **Confirm it serves from outside this network.** The author's organisation currently blocks the
-   new domain, so nothing on the office network — including the tools used to build this — can
-   test it. Check from a phone on mobile data instead.
-2. **Decide which address is the real one.** Vercel currently has `www.farmwth.com` as production
-   with `farmwth.com` redirecting to it. The plain `farmwth.com` is the better choice — shorter,
-   and it is what people type — so flip that round in **Settings → Domains** before anything
-   starts printing it.
-3. **Then, and only then, redirect the old address.** A rule sending
-   `texas-climate-trends.vercel.app` to the new domain is what makes it ONE address instead of two
-   serving the same pages.
+**Two things that caught us out, recorded so they do not again:**
 
-> **Why step 3 waits.** That redirect sends every existing visitor to the new domain. If the new
-> domain is unreachable for anyone — as it is for the author's own office right now — the redirect
-> takes the whole site down for them, and the working address is the very thing it throws away.
-> The old link keeps working perfectly in the meantime, so there is nothing to gain by rushing it.
+- **A campus firewall blocked the new domain.** Allowing `www.farmwth.com` did NOT cover the bare
+  `farmwth.com` — to a web filter those are two different names, and a wildcard `*.farmwth.com`
+  does not match the bare name either. Both had to be listed separately. If the site is ever
+  unreachable from one network but fine from a phone, suspect this before suspecting the code.
+- **A tool reporting "connection reset" is not proof the site is down.** The bare domain looked
+  dead from three separate checks while it was in fact serving perfectly — an independent TLS scan
+  showed valid certificates at grades A+ and A. Check your checking tool against a site you know
+  is healthy before believing it.
 
-**What is already safe.** The address printed inside every exported CSV is no longer a hardcoded
-string; it is read from whatever address the reader is actually on. So an export made from the new
-domain names the new domain, one made from the old names the old, and neither can rot.
+**If you ever want the short name in the address bar** instead of `www.`, that is **Settings →
+Domains** in Vercel: make `farmwth.com` the production domain and set `www` to redirect to it.
+Both work either way — it only changes which one people see. One consequence: a browser treats the
+two as separate sites for storage, so switching resets the visitor codes behind your analytics and
+you would need to set `?notme=1` again on your own devices.
+
+**One thing left for later.** The redirect from the old address is TEMPORARY on purpose, so that
+if the domain ever lapsed the old link would still work. Once `farmwth.com` has run quietly for a
+few months, ask Claude to make it permanent — that is what lets search engines transfer the old
+address to the new one properly.
+
+**What is already safe.** The address printed inside every exported CSV is not a hardcoded string;
+it is read from whatever address the reader is actually on. So an export made from the new domain
+names the new domain, one made from the old names the old, and neither can rot.
 
 **What must not be renamed**, whatever the site is called: the Vercel URL, the GitHub repo slug,
 `GEE_PROJECT_ID`, the R2 bucket, and the Supabase project. Other systems resolve those.

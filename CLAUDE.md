@@ -6,6 +6,11 @@
 > slug, `GEE_PROJECT_ID` and the Supabase project name are all unchanged — they
 > are identifiers other systems resolve, and renaming them breaks live links and
 > credentials while gaining nothing. Do not "tidy" them.
+>
+> **The public address is now `farmwth.com`** (2026-09-24), which resolves to
+> `www.farmwth.com` — that is the production domain in Vercel. The original
+> `texas-climate-trends.vercel.app` still works and 307-redirects to it, and
+> must keep working: it was shared with growers and is in bookmarks.
 
 Working context for this repo. **Read this first in a new session.** Update the
 [Progress log](#progress-log) as work lands.
@@ -1947,9 +1952,14 @@ explicit decision; they chose a persistent anonymous code.
 
 **`lib/analytics/visitor.ts` — a random code in localStorage.** Derived from nothing: no IP,
 no user agent, no fingerprint. It identifies a BROWSER, never a person, and there is nothing
-else stored that it could be joined to. The cost is real and is stated rather than buried —
-**a plain sentence in the site's own footer says the site does this**, and that sentence is
-part of the feature. Do not delete it while the module exists.
+else stored that it could be joined to.
+
+**A footer paragraph said so on the page. IT WAS REMOVED ON 21 SEPTEMBER 2026 at the user's
+request, and the code it described is still running.** So the site now keeps a per-browser code
+without telling visitors anywhere. That was the user's call to make and they made it knowingly;
+it is recorded here rather than left for someone to discover, because the honest-disclosure
+rationale is still written into `lib/analytics/visitor.ts` and would otherwise read as satisfied.
+The wording is in the git history of `app/page.tsx` if it is ever wanted back.
 
 County-only is UNCHANGED and must stay: the coordinate is still resolved and discarded.
 
@@ -2088,7 +2098,12 @@ a journal-column figure. Recharts will not thin ticks supplied explicitly, so it
 Readers said the figures were too wide to place in a paper. **Scaling the export cannot fix that**
 — it changes the pixel count, not the shape; a 3.5-inch-wide version of a window-wide chart is the
 same wide chart, smaller, with type too small to read. So `renderAt` resizes the chart off-screen,
-lets Recharts re-lay-out, captures, and restores. Presets are journal column widths at 300 dpi.
+lets Recharts re-lay-out, captures, and restores. **Raised to 600 dpi on 21 September 2026** —
+300 is the minimum journals state, 600 is what they ask for when a figure carries fine line work
+and small type, which this one does. Presets are named by their measurements rather than by
+purpose, and the size selector is the right-hand half of the Figure button rather than a separate
+control: a size parked elsewhere reads as an unrelated setting, and somebody can choose one
+without realising which button applies it.
 
 **THE ANIMATION TRAP — this shipped into a test and produced a confident, plausible, empty figure.**
 Waiting for the container to reach the target width is NOT waiting for the chart to be drawn:
@@ -2153,6 +2168,63 @@ intent, and it applies correctly to a window that does not start on 1 January.
 **Still open, deliberately:** the end date defaults to "latest" for every crop, so wheat keeps
 accumulating past harvest until the reader sets 30 June. Whether a crop should carry a default
 END date as well as a start is an agronomic call, not a coding one.
+
+### 2026-09-21 — The band is "Middle 50%", and why it is not a standard deviation
+
+User asked directly whether a standard deviation is the usual choice. Worth recording, because
+the question will come back and the answer is not "we preferred percentiles".
+
+**Mean ± 1 SD is what most crop-modelling papers print, and it is wrong for this variable.**
+Accumulated rainfall is right-skewed — a few very wet years pull the mean up — so the lower edge
+can fall **below zero**. A band implying negative rainfall is visibly wrong on the chart, and
+symmetric bounds misdescribe an asymmetric distribution. Percentiles assume nothing about shape,
+and both edges are always values some year actually reached.
+
+**The middle 80% (p10–p90) was also offered and declined.** It is already computed and simply not
+drawn, and it would make "outside the band" mean a 1-in-5 year rather than a 1-in-2 one — a fair
+argument, but the user kept the appearance already settled on. Both alternatives are written into
+the comment beside the `<Area>` in `ClimateChart.tsx` so this is not re-derived from scratch.
+
+Label changed from "Middle half of years" to **"Middle 50% of years"** — same statistic, stated as
+one — in the legend, the tooltip, the exported figure, `README.md` and `START-HERE.md`. The
+sentence under the chart now also says outright that **a year outside the band is not unusual**,
+which is the part a short label cannot carry.
+
+### 2026-09-24 — Custom domain, and the old link kept alive
+
+**`farmwth.com`, registered at Cloudflare.** Both it and `www.farmwth.com` are CNAMEs to
+`80122c051715fcef.vercel-dns-017.com`, both **DNS only (grey cloud)** — Cloudflare's proxy in
+front of Vercel stops certificate issuance, which fails as a certificate warning or an endless
+redirect and looks nothing like a DNS problem.
+
+**A CNAME cannot legally sit at the zone apex**, so Cloudflare flattens it: it resolves the target
+itself and hands out A records. That is why the bare name and `www` can behave differently despite
+identical settings, and it is worth knowing before diagnosing anything here.
+
+**`next.config.mjs` now redirects the original `texas-climate-trends.vercel.app` to the domain.**
+The old link was shared with growers and is in bookmarks, so it must never break; a redirect keeps
+it alive while putting the real name in the address bar.
+
+- **Matched on the EXACT host.** Vercel also issues previews like
+  `texas-climate-trends-<hash>-pulkitjuneja-23.vercel.app`, and a looser pattern would bounce every
+  preview build to production — breaking previews while appearing to work. Verified against four
+  hosts: the original redirects, a preview does not, and neither `farmwth.com` nor `www.` loops.
+- **`/:path*` carries the query string.** The private insights page is reached by a link with a key
+  in the query; a redirect dropping it would 404 with no clue why. Verified end to end on the live
+  site — the key survives both hops.
+- **307, not 308, deliberately.** A browser caches a permanent redirect indefinitely, so if the
+  domain ever lapsed, everyone who had followed it once would find the OLD link broken too — the
+  fallback gone exactly when needed. **Change `permanent` to true once the domain has run quietly
+  for a few months**, so search engines transfer properly.
+
+`scripts/check-live-site.mts` now defaults to the address a visitor actually uses.
+
+**A DIAGNOSTIC LESSON WORTH KEEPING.** The bare domain appeared dead from outside — three
+consecutive `ECONNRESET`s — and that was reported as a broken deployment. It was not: an
+independent TLS scan showed both IPs serving a valid `CN=farmwth.com` certificate at grades A+ and
+A. **One tool's failure is not the site's failure.** The tell was there and was missed: the same
+tool had also failed identically on `dns.google`, which is obviously not down. Before concluding a
+host is broken, check the tool against a host known to be healthy.
 
 ## Next up
 
