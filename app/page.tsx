@@ -1486,40 +1486,37 @@ export default function Page() {
           </p>
 
           {/*
-            THE PEOPLE, as the author line of a paper: names in order, no roles.
-            Positions appear only inside "About this tool", as the authors
-            asked: a plain title and a location, no specialisms or addresses.
-            Checked against each person's Texas A&M profile page on 30 September
-            2026 — re-check there if anyone is promoted or changes post.
-            The order itself says who led, which is how the authors present the
-            work elsewhere. Institutions only on this visible line — the full
-            affiliations and the citation are behind "About this tool".
+            THE TEAM, behind one button — no names line above it. A visible
+            names line was tried and removed on 30 September 2026: with the
+            team one click away it only repeated what the button holds.
 
-            Street addresses and ZIP codes were dropped on purpose; the CITY is
-            kept, because Temple and Lubbock tell a grower which part of Texas
-            each person works in, and are what tell the two AgriLife centres
-            apart.
+            The button is "Team & contact" rather than "Meet the team" because
+            the feedback address lives inside it, and somebody looking for a way
+            to ask a question will not think to open a button that only
+            promises people.
+
+            Positions are a plain title and location, as the authors asked — no
+            specialisms, no street addresses. Checked against each person's
+            Texas A&M profile page on 30 September 2026; re-check there if
+            anyone is promoted or changes post. Names run in author order.
+
+            THERE IS DELIBERATELY NO "HOW TO CITE" LINE YET. The authors intend
+            to license the code (MIT) and deposit a release with Zenodo for a
+            DOI first; a citation without the DOI would then need changing in
+            every copy already taken.
           */}
-          <p className="credits">
-            <strong>Pulkit Juneja, Gurjinder S. Baath, and Joseph A. Burke</strong>
-            <span className="credits-org"> · Texas A&amp;M University and Texas A&amp;M AgriLife</span>
-          </p>
-
           <div className="folds">
           <details className="fold">
-            <summary>About this tool</summary>
+            <summary>Team &amp; contact</summary>
             {/*
-              Photos are the official headshots from each person's Texas A&M
-              page, cropped to the face and reduced to 192 px squares (~7 KB)
-              so the footer stays light. Sources are recorded in
-              public/img/CREDITS.md. Pulkit's is a placeholder until a photo
-              is supplied.
+              Photos: Pulkit's from his own site, the others from their Texas
+              A&M profile pages — each cropped to the face and reduced to a
+              192 px square (~7 KB) so the footer stays light. Sources are in
+              public/img/CREDITS.md.
             */}
             <ul className="people">
               <li>
-                <span className="avatar avatar-initials" aria-hidden="true">
-                  PJ
-                </span>
+                <img className="avatar" src="/img/people/juneja.jpg" alt="Pulkit Juneja" width={48} height={48} />
                 <div>
                   <strong>Pulkit Juneja</strong>
                   <span className="role">PhD Student · Blackland Research and Extension Center</span>
@@ -1542,10 +1539,11 @@ export default function Page() {
                 </div>
               </li>
             </ul>
-            <p className="cite-this">
-              <strong>How to cite this tool.</strong> Juneja, P., Baath, G. S., &amp; Burke, J. A.
-              (2026). <em>Texas Weather Explorer</em> [Web application].{" "}
-              <a href="https://farmwth.com">https://farmwth.com</a>
+            <p className="contact">
+              <strong>Feedback or questions?</strong> Email{" "}
+              <a href="mailto:pulkit.juneja@tamu.edu?subject=Texas%20Weather%20Explorer%20feedback">
+                pulkit.juneja@tamu.edu
+              </a>
             </p>
           </details>
 

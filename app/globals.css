@@ -2272,16 +2272,6 @@ footer.site .disclaimer {
   color: var(--text-primary);
 }
 
-/* The visible author line: names in order, institutions after. */
-footer.site .credits {
-  margin: 0 0 12px;
-  color: var(--text-primary);
-}
-
-footer.site .credits-org {
-  color: var(--text-secondary);
-}
-
 /*
   The two collapsed sections — "About this tool" and "Data sources and
   citations" — are <details> elements whose <summary> is styled as a button.
@@ -2391,17 +2381,9 @@ footer.site .avatar {
   background: var(--band-outer);
 }
 
-footer.site .avatar-initials {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-}
-
-footer.site .cite-this {
-  margin: 10px 0 0;
+footer.site .contact {
+  margin: 14px 0 0;
+  color: var(--text-primary);
 }
 
 .skeleton {
