@@ -1497,10 +1497,19 @@ export default function Page() {
             than a paper, and OpenStreetMap's licence requires the
             "© OpenStreetMap contributors" wording.
           */}
-          <div className="sources">
-            <p>
-              <strong>Data sources and citations</strong>
-            </p>
+          {/*
+            COLLAPSED BY DEFAULT, behind a button. Nine citations took most of
+            the footer's height for something a grower reads rarely and a
+            researcher looks up once. The disclaimer above deliberately stays
+            OPEN — it is the one thing every reader should see.
+
+            A native <details> rather than React state: it works before the
+            page's JavaScript has loaded, it is keyboard- and screen-reader-
+            accessible for free, and the citations stay in the page source, so
+            search engines and "find in page" still reach them.
+          */}
+          <details className="sources">
+            <summary>Data sources and citations</summary>
             <ul>
               <li>
                 <strong>Historical weather (gridMET).</strong> Abatzoglou, J. T. (2013).
@@ -1564,7 +1573,7 @@ export default function Page() {
                 via Nominatim. County boundaries from the U.S. Census Bureau (TIGERweb).
               </li>
             </ul>
-          </div>
+          </details>
           {/*
             THE "WHAT WE RECORD" PARAGRAPH WAS REMOVED ON 21 SEPTEMBER 2026 AT
             THE USER'S REQUEST. Recording that here rather than deleting the

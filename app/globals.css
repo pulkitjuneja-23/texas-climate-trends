@@ -2272,12 +2272,48 @@ footer.site .disclaimer {
   color: var(--text-primary);
 }
 
-footer.site .sources p {
-  margin: 0 0 6px;
+/* The collapsed citations — a <details> whose <summary> is styled as a button. */
+footer.site .sources summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  list-style: none;
+  padding: 5px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font-weight: 600;
+  user-select: none;
+}
+
+/* Hide the browser's own disclosure triangle and draw one that rotates. */
+footer.site .sources summary::-webkit-details-marker {
+  display: none;
+}
+
+footer.site .sources summary::after {
+  content: "▸";
+  font-size: 0.8em;
+  transition: transform 0.15s ease;
+}
+
+footer.site .sources[open] summary::after {
+  transform: rotate(90deg);
+}
+
+footer.site .sources summary:hover {
+  border-color: var(--text-muted);
+}
+
+footer.site .sources summary:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: 2px;
 }
 
 footer.site .sources ul {
-  margin: 0;
+  margin: 10px 0 0;
   padding-left: 18px;
 }
 
