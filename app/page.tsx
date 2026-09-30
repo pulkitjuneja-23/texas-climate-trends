@@ -1487,6 +1487,9 @@ export default function Page() {
 
           {/*
             THE PEOPLE, as the author line of a paper: names in order, no roles.
+            Positions appear only inside "About this tool", taken from each
+            person's official Texas A&M profile page (30 September 2026) —
+            re-check them there if anyone is promoted or changes post.
             The order itself says who led, which is how the authors present the
             work elsewhere. Institutions only on this visible line — the full
             affiliations and the citation are behind "About this tool".
@@ -1507,6 +1510,7 @@ export default function Page() {
             <ul className="people">
               <li>
                 <strong>Pulkit Juneja</strong>
+                <em className="role">PhD Student</em>
                 <span>
                   Department of Soil and Crop Sciences, Texas A&amp;M University · Texas A&amp;M
                   AgriLife, Blackland Research and Extension Center, Temple
@@ -1514,6 +1518,7 @@ export default function Page() {
               </li>
               <li>
                 <strong>Gurjinder S. Baath</strong>
+                <em className="role">Assistant Professor (Digital Agriculture)</em>
                 <span>
                   Department of Soil and Crop Sciences, Texas A&amp;M University · Texas A&amp;M
                   AgriLife, Blackland Research and Extension Center, Temple
@@ -1521,6 +1526,7 @@ export default function Page() {
               </li>
               <li>
                 <strong>Joseph A. Burke</strong>
+                <em className="role">Assistant Professor and Extension Soil and Water Specialist</em>
                 <span>
                   Department of Soil and Crop Sciences, Texas A&amp;M University · Texas A&amp;M
                   AgriLife Research and Extension Center, Lubbock

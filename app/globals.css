@@ -2362,6 +2362,14 @@ footer.site .people strong {
   color: var(--text-primary);
 }
 
+/* The position, directly under the name and quieter than it. */
+footer.site .people .role {
+  display: block;
+  font-style: normal;
+  color: var(--text-primary);
+  opacity: 0.8;
+}
+
 footer.site .cite-this {
   margin: 10px 0 0;
 }
