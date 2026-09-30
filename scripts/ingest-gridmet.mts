@@ -164,6 +164,20 @@ if (TO_R2) {
   }
 }
 
+/** A hold only fails the GitHub run (and so emails) once it has lasted this long. */
+const ALERT_AFTER_HOURS = 24;
+/** ...and then no more often than this. */
+const ALERT_EVERY_HOURS = 24;
+
+/**
+ * Set once a rollover has switched the archive off for rebuilding.
+ *
+ * Declared up here, with the thresholds above, because a hold can now be
+ * triggered by the very FIRST request to Idaho — before most of this script
+ * has run. Anything the hold logic reads has to exist by then.
+ */
+let buildingRaised = false;
+
 interface Blob {
   key: string;
   body: Buffer;
@@ -225,18 +239,78 @@ async function fetchSlab(
   });
   if (horizStride > 1) qs.set("horizStride", String(horizStride));
 
+  return fromIdaho(`downloading ${v.grid} ${start}..${end}`, async () => {
+    const res = await fetch(`${NCSS(v.file)}?${qs}`);
+    if (!res.ok) throw new Error(`${res.status} ${(await res.text()).slice(0, 200)}`);
+    return Buffer.from(await res.arrayBuffer());
+  });
+}
+
+/**
+ * Did this request fail because Idaho's server was not there, rather than
+ * because it answered with something wrong?
+ *
+ * The distinction is the whole point. Between 21 and 29 September 2026 the
+ * refresh failed seven times and every one was this — `ECONNREFUSED` or a
+ * connect timeout against thredds.northwestknowledge.net — and every one
+ * emailed "All jobs have failed". Nothing was wrong: the live copy kept
+ * serving, and the next run a few hours later succeeded. A three-hourly job
+ * against a university server will meet outages routinely, and an alert for
+ * each one teaches the owner to ignore alerts.
+ *
+ * Only a gateway-style 502/503/504 counts as an outage among HTTP errors. A
+ * 400 or a plain 500 means Idaho answered and refused THIS request — a
+ * malformed query, say — which a retry in three hours will not fix and
+ * which somebody should hear about promptly.
+ */
+function isUnreachable(e: unknown): boolean {
+  if (!(e instanceof Error)) return false;
+  if (/^(502|503|504)\b/.test(e.message)) return true;
+  // Node's fetch reports every network-level failure as a TypeError
+  // "fetch failed", with the real reason on `cause`.
+  if (e instanceof TypeError && e.message === "fetch failed") return true;
+  const code = (e as { code?: string }).code ?? "";
+  return /^(ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|UND_ERR_)/.test(code);
+}
+
+/**
+ * Ask Idaho for something, with retries — and if it is simply not there,
+ * HOLD rather than crash.
+ *
+ * A hold keeps the live copy serving, records the reason in the manifest, and
+ * exits green; the scheduled run three hours later tries again. It only turns
+ * red, and so emails, once the outage has lasted a day — the same rule as a
+ * data hold, through the same function, so there is one policy and not two.
+ *
+ * During a rollover the hold keeps the archive switched off and always alerts,
+ * because publishing the pre-rebuild manifest over half-rewritten chunks would
+ * serve a plausible, wrong series.
+ */
+async function fromIdaho<T>(what: string, go: () => Promise<T>): Promise<T> {
+  let last: unknown;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const res = await fetch(`${NCSS(v.file)}?${qs}`);
-      if (!res.ok) throw new Error(`${res.status} ${(await res.text()).slice(0, 200)}`);
-      return Buffer.from(await res.arrayBuffer());
+      return await go();
     } catch (e) {
-      if (attempt === 2) throw e;
-      console.log(`      retrying (${e instanceof Error ? e.message : e})`);
-      await new Promise((r) => setTimeout(r, 3000 * (attempt + 1)));
+      last = e;
+      if (attempt < 2) {
+        const why = e instanceof Error ? e.message : String(e);
+        console.log(`      retrying (${why})`);
+        await new Promise((r) => setTimeout(r, 3000 * (attempt + 1)));
+      }
     }
   }
-  throw new Error("unreachable");
+  if (isUnreachable(last)) {
+    const cause = (last as { cause?: { code?: string; message?: string } }).cause;
+    const detail = cause?.code ?? cause?.message ?? (last as Error).message;
+    await holdAndExit(
+      [`Idaho's gridMET server could not be reached while ${what} (${detail}), after three attempts`],
+      "Idaho's server was unreachable",
+      buildingRaised,
+      true
+    );
+  }
+  throw last;
 }
 
 // ---------------------------------------------------------------------------
@@ -269,6 +343,31 @@ function json(obj: unknown): Buffer {
 const started = Date.now();
 const elapsed = () => ((Date.now() - started) / 1000).toFixed(0).padStart(4);
 
+// --- 0. Read what the store already holds, before asking Idaho anything ---
+// Our own bucket is reliable and Idaho sometimes is not; reading this first
+// means an Idaho outage can be recorded as a hold instead of a crash.
+/**
+ * What the store already says about itself.
+ *
+ * A partial run MUST NOT invent the ranges of the parts it is not touching.
+ * Recomputing them looks harmless and is not: on the first run of a new year a
+ * current-only refresh would write "archive covers 1995-2026" into the manifest
+ * while the archive chunks still held 1995-2025 — and the reader takes its
+ * slicing offsets from the manifest. Every date in the record would shift, with
+ * nothing anywhere reporting an error.
+ */
+const existing: Manifest | null = r2
+  ? ((JSON.parse(
+      (await getObject(r2, MANIFEST_KEY))?.toString("utf8") ?? "null"
+    ) as Manifest | null) ?? null)
+  : null;
+
+/**
+ * Idaho's latest available day. Declared before the first request so that a
+ * hold raised by an outage can refer to it; filled in by step 2.
+ */
+let latest = "";
+
 // --- 1. Establish the grid from the server, not from assumed parameters ---
 console.log("probing the grid ...");
 const probe = parseNetCDF3(
@@ -287,8 +386,12 @@ console.log(
 );
 
 // --- 2. Work out the two time ranges ---
-const dsXml = await (await fetch(`${NCSS(VARS[0].file)}/dataset.xml`)).text();
-const latest = (dsXml.match(/<end>([^<]+)<\/end>/)?.[1] ?? "").slice(0, 10);
+const dsXml = await fromIdaho("reading Idaho's latest date", async () => {
+  const res = await fetch(`${NCSS(VARS[0].file)}/dataset.xml`);
+  if (!res.ok) throw new Error(`${res.status} ${(await res.text()).slice(0, 200)}`);
+  return res.text();
+});
+latest = (dsXml.match(/<end>([^<]+)<\/end>/)?.[1] ?? "").slice(0, 10);
 if (!/^\d{4}-\d{2}-\d{2}$/.test(latest)) {
   throw new Error(`Could not read the latest available date from THREDDS (got "${latest}")`);
 }
@@ -296,21 +399,6 @@ if (!/^\d{4}-\d{2}-\d{2}$/.test(latest)) {
 const PARTS: Part[] = ONLY_PART ? [ONLY_PART] : ["archive", "current"];
 const rebuildingArchive = PARTS.includes("archive");
 
-/**
- * What the store already says about itself.
- *
- * A partial run MUST NOT invent the ranges of the parts it is not touching.
- * Recomputing them looks harmless and is not: on the first run of a new year a
- * current-only refresh would write "archive covers 1995-2026" into the manifest
- * while the archive chunks still held 1995-2025 — and the reader takes its
- * slicing offsets from the manifest. Every date in the record would shift, with
- * nothing anywhere reporting an error.
- */
-const existing: Manifest | null = r2
-  ? ((JSON.parse(
-      (await getObject(r2, MANIFEST_KEY))?.toString("utf8") ?? "null"
-    ) as Manifest | null) ?? null)
-  : null;
 
 /**
  * Where the archive/current boundary sits.
@@ -409,10 +497,6 @@ if (rebuildingArchive) {
  * workflow tries again a few hours later.
  */
 
-/** A hold only fails the GitHub run (and so emails) once it has lasted this long. */
-const ALERT_AFTER_HOURS = 24;
-/** ...and then no more often than this. */
-const ALERT_EVERY_HOURS = 24;
 
 /** Appends to the GitHub run page's summary, when running in Actions. */
 function summary(markdown: string) {
@@ -432,7 +516,13 @@ function summary(markdown: string) {
  * overwriting the archive part, publishing the pre-rebuild manifest would turn
  * the archive back on over half-rewritten chunks.
  */
-async function holdAndExit(problems: string[], stage: string, keepBuilding = false): Promise<never> {
+async function holdAndExit(
+  problems: string[],
+  stage: string,
+  keepBuilding = false,
+  /** The hold is ONLY because Idaho could not be reached. See `hold.unreachable`. */
+  unreachable = false
+): Promise<never> {
   const now = new Date().toISOString();
   const prev = existing?.hold;
   const since = prev?.since ?? now;
@@ -440,7 +530,16 @@ async function holdAndExit(problems: string[], stage: string, keepBuilding = fal
   const sinceAlert = prev?.lastAlert ? (Date.parse(now) - Date.parse(prev.lastAlert)) / 3.6e6 : Infinity;
   const alert = keepBuilding || (heldHours >= ALERT_AFTER_HOURS && sinceAlert >= ALERT_EVERY_HOURS);
 
-  const reason = `${stage}: ${problems[0]}${problems.length > 1 ? ` (and ${problems.length - 1} more)` : ""}`;
+  /*
+    An outage on top of a DATA hold must not overwrite it. The data problem is
+    still unresolved — Idaho merely could not be asked about it this time — and
+    it is the reason that matters when somebody reads the manifest.
+  */
+  const dataHoldStands = Boolean(unreachable && prev && !prev.unreachable);
+  const reason =
+    dataHoldStands && prev
+      ? prev.reason
+      : `${stage}: ${problems[0]}${problems.length > 1 ? ` (and ${problems.length - 1} more)` : ""}`;
 
   console.error(`\nHOLDING — not publishing. ${stage}:`);
   for (const p of problems) console.error(`  ${p}`);
@@ -458,7 +557,9 @@ async function holdAndExit(problems: string[], stage: string, keepBuilding = fal
         since,
         lastTry: now,
         reason,
-        upstreamEnd: latest,
+        // An outage can strike before Idaho's latest date has been read.
+        upstreamEnd: latest || prev?.upstreamEnd || "",
+        ...(unreachable && !dataHoldStands ? { unreachable: true } : {}),
         ...(alert ? { lastAlert: now } : prev?.lastAlert ? { lastAlert: prev.lastAlert } : {}),
       },
     };
@@ -484,7 +585,9 @@ async function holdAndExit(problems: string[], stage: string, keepBuilding = fal
   console.error(
     `\n${serving}\nNothing new was published (${heldFor}). The next scheduled run tries again.` +
       (alert ? `\nFailing this run so GitHub sends an alert.` : "") +
-      `\nIf the data has been checked by hand and is genuinely right, re-run with --allow-implausible.`
+      (unreachable && !dataHoldStands
+        ? `\nNothing is wrong with the data; Idaho's server did not answer.`
+        : `\nIf the data has been checked by hand and is genuinely right, re-run with --allow-implausible.`)
   );
   summary(
     `## gridMET update held — nothing published\n\n` +
@@ -503,12 +606,35 @@ async function holdAndExit(problems: string[], stage: string, keepBuilding = fal
  */
 if (!rebuildingArchive && existing && !FORCE) {
   const c = existing.parts.current;
+  /*
+    A hold that exists ONLY because Idaho was unreachable does not need a full
+    re-download to clear: we have just reached Idaho, and if it has nothing new
+    then the live copy is already current. Dropping the hold here costs one
+    small manifest write instead of re-staging ~1,400 chunks of a copy that was
+    never wrong. A DATA hold still takes the full path, because only a real
+    download can show that Idaho has repaired its file.
+  */
+  const outageOnly = existing.hold?.unreachable === true;
   if (
     c.end === RANGES.current.end &&
     c.start === RANGES.current.start &&
     !c.withheld &&
-    !existing.hold
+    (!existing.hold || outageOnly)
   ) {
+    if (outageOnly && r2 && !STAGE_ONLY) {
+      const { hold: _cleared, ...rest } = existing;
+      await flush(
+        [
+          {
+            key: MANIFEST_KEY,
+            body: json(rest),
+            opts: { contentType: "application/json", cacheControl: META_CACHE },
+          },
+        ],
+        "outage hold cleared"
+      );
+      console.log(`\nIdaho is reachable again and has nothing new; the outage hold is cleared.`);
+    }
     console.log(
       `\nAlready current: gridMET's latest day is ${latest} and the archive already holds it.\n` +
         `Nothing uploaded. Use --force to refresh anyway.`
@@ -677,6 +803,7 @@ if (needsBuildingFlag) {
     ],
     "archive switched off for rebuild"
   );
+  buildingRaised = true;
 
   /**
    * If the rebuild dies half-way, the flag stays up and the site keeps serving

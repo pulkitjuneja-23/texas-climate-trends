@@ -230,6 +230,18 @@ export interface Manifest {
     reason: string;
     /** Idaho's latest day at the last attempt. */
     upstreamEnd: string;
+    /**
+     * True when the ONLY reason for the hold is that Idaho's server could not
+     * be reached — nothing was downloaded, so nothing was judged and nothing
+     * is wrong with the live copy.
+     *
+     * Kept distinct from a data hold because the two clear differently. A data
+     * hold needs a full re-download to prove Idaho has repaired its file. An
+     * outage needs only Idaho to answer again: if it then has nothing new, the
+     * live copy is already current and the hold can simply be dropped, rather
+     * than spending ~1,400 uploads re-staging a copy that was never wrong.
+     */
+    unreachable?: boolean;
   };
   vars: Record<
     string,
