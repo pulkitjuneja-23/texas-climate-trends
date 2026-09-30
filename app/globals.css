@@ -2347,14 +2347,24 @@ footer.site .fold li {
   margin-bottom: 5px;
 }
 
-/* People: name on its own line, affiliations beneath — no bullets. */
+/*
+  People: a small card each — photo, name, then "position · location".
+  Side by side when there is room, one per row on a phone.
+*/
 footer.site .fold ul.people {
   list-style: none;
   padding-left: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+  gap: 12px 20px;
 }
 
 footer.site .people li {
-  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  min-width: 0;
 }
 
 footer.site .people strong {
@@ -2362,12 +2372,32 @@ footer.site .people strong {
   color: var(--text-primary);
 }
 
-/* The position, directly under the name and quieter than it. */
 footer.site .people .role {
   display: block;
-  font-style: normal;
-  color: var(--text-primary);
-  opacity: 0.8;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/*
+  Rounded squares rather than circles: both source photos are cropped tight at
+  the top, and a circle would clip the tops of heads.
+*/
+footer.site .avatar {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: var(--band-outer);
+}
+
+footer.site .avatar-initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
 }
 
 footer.site .cite-this {

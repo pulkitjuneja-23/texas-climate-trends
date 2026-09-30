@@ -1487,9 +1487,10 @@ export default function Page() {
 
           {/*
             THE PEOPLE, as the author line of a paper: names in order, no roles.
-            Positions appear only inside "About this tool", taken from each
-            person's official Texas A&M profile page (30 September 2026) —
-            re-check them there if anyone is promoted or changes post.
+            Positions appear only inside "About this tool", as the authors
+            asked: a plain title and a location, no specialisms or addresses.
+            Checked against each person's Texas A&M profile page on 30 September
+            2026 — re-check there if anyone is promoted or changes post.
             The order itself says who led, which is how the authors present the
             work elsewhere. Institutions only on this visible line — the full
             affiliations and the citation are behind "About this tool".
@@ -1507,30 +1508,38 @@ export default function Page() {
           <div className="folds">
           <details className="fold">
             <summary>About this tool</summary>
+            {/*
+              Photos are the official headshots from each person's Texas A&M
+              page, cropped to the face and reduced to 192 px squares (~7 KB)
+              so the footer stays light. Sources are recorded in
+              public/img/CREDITS.md. Pulkit's is a placeholder until a photo
+              is supplied.
+            */}
             <ul className="people">
               <li>
-                <strong>Pulkit Juneja</strong>
-                <em className="role">PhD Student</em>
-                <span>
-                  Department of Soil and Crop Sciences, Texas A&amp;M University · Texas A&amp;M
-                  AgriLife, Blackland Research and Extension Center, Temple
+                <span className="avatar avatar-initials" aria-hidden="true">
+                  PJ
                 </span>
+                <div>
+                  <strong>Pulkit Juneja</strong>
+                  <span className="role">PhD Student · Blackland Research and Extension Center</span>
+                </div>
               </li>
               <li>
-                <strong>Gurjinder S. Baath</strong>
-                <em className="role">Assistant Professor (Digital Agriculture)</em>
-                <span>
-                  Department of Soil and Crop Sciences, Texas A&amp;M University · Texas A&amp;M
-                  AgriLife, Blackland Research and Extension Center, Temple
-                </span>
+                <img className="avatar" src="/img/people/baath.jpg" alt="Gurjinder S. Baath" width={48} height={48} />
+                <div>
+                  <strong>Gurjinder S. Baath</strong>
+                  <span className="role">
+                    Assistant Professor · Blackland Research and Extension Center
+                  </span>
+                </div>
               </li>
               <li>
-                <strong>Joseph A. Burke</strong>
-                <em className="role">Assistant Professor and Extension Soil and Water Specialist</em>
-                <span>
-                  Department of Soil and Crop Sciences, Texas A&amp;M University · Texas A&amp;M
-                  AgriLife Research and Extension Center, Lubbock
-                </span>
+                <img className="avatar" src="/img/people/burke.jpg" alt="Joseph A. Burke" width={48} height={48} />
+                <div>
+                  <strong>Joseph A. Burke</strong>
+                  <span className="role">Assistant Professor · Texas A&amp;M AgriLife Lubbock</span>
+                </div>
               </li>
             </ul>
             <p className="cite-this">

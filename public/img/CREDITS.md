@@ -86,3 +86,22 @@ rather than assuming a small pixel count means a small file.
 prefixes found everything the free-text queries missed — a single USDA photo
 shoot uploaded in bulk shares a filename prefix, which is a far better handle
 than any phrase.
+
+---
+
+## Author photographs (`people/`)
+
+Official headshots from each author's Texas A&M profile page, downloaded on
+30 September 2026, cropped to the face and reduced to 192 px square JPEGs so
+the footer stays light. They are used with the authors' knowledge as the
+people credited on the site; the originals remain the property of their
+owners.
+
+| File | Person | Source |
+|---|---|---|
+| `people/baath.jpg` | Gurjinder S. Baath | https://blackland.tamu.edu/media/ijkked3j/baath.jpg (Blackland Research and Extension Center profile) |
+| `people/burke.jpg` | Joseph A. Burke | https://agrilifepeople.tamu.edu/img/pictures/26669.png (AgriLife People directory) |
+
+Pulkit Juneja is shown with initials until a photo is supplied. Dr. Baath's
+AgriLife People entry has no photograph — its image URL returns an HTML page —
+which is why his comes from the research centre's site instead.
