@@ -1486,6 +1486,55 @@ export default function Page() {
           </p>
 
           {/*
+            THE PEOPLE, as the author line of a paper: names in order, no roles.
+            The order itself says who led, which is how the authors present the
+            work elsewhere. Institutions only on this visible line — the full
+            affiliations and the citation are behind "About this tool".
+
+            Street addresses and ZIP codes were dropped on purpose; the CITY is
+            kept, because Temple and Lubbock tell a grower which part of Texas
+            each person works in, and are what tell the two AgriLife centres
+            apart.
+          */}
+          <p className="credits">
+            <strong>Pulkit Juneja, Gurjinder S. Baath, and Joseph A. Burke</strong>
+            <span className="credits-org"> · Texas A&amp;M University and Texas A&amp;M AgriLife</span>
+          </p>
+
+          <div className="folds">
+          <details className="fold">
+            <summary>About this tool</summary>
+            <ul className="people">
+              <li>
+                <strong>Pulkit Juneja</strong>
+                <span>
+                  Department of Soil and Crop Sciences, Texas A&amp;M University · Texas A&amp;M
+                  AgriLife, Blackland Research and Extension Center, Temple
+                </span>
+              </li>
+              <li>
+                <strong>Gurjinder S. Baath</strong>
+                <span>
+                  Department of Soil and Crop Sciences, Texas A&amp;M University · Texas A&amp;M
+                  AgriLife, Blackland Research and Extension Center, Temple
+                </span>
+              </li>
+              <li>
+                <strong>Joseph A. Burke</strong>
+                <span>
+                  Department of Soil and Crop Sciences, Texas A&amp;M University · Texas A&amp;M
+                  AgriLife Research and Extension Center, Lubbock
+                </span>
+              </li>
+            </ul>
+            <p className="cite-this">
+              <strong>How to cite this tool.</strong> Juneja, P., Baath, G. S., &amp; Burke, J. A.
+              (2026). <em>Texas Weather Explorer</em> [Web application].{" "}
+              <a href="https://farmwth.com">https://farmwth.com</a>
+            </p>
+          </details>
+
+          {/*
             FORMAL CITATIONS, verified against the registries on 30 September
             2026 — Crossref for the three journal articles, DataCite for the
             Open-Meteo software record. Two things worth knowing if this is
@@ -1508,7 +1557,7 @@ export default function Page() {
             accessible for free, and the citations stay in the page source, so
             search engines and "find in page" still reach them.
           */}
-          <details className="sources">
+          <details className="fold">
             <summary>Data sources and citations</summary>
             <ul>
               <li>
@@ -1574,6 +1623,7 @@ export default function Page() {
               </li>
             </ul>
           </details>
+          </div>
           {/*
             THE "WHAT WE RECORD" PARAGRAPH WAS REMOVED ON 21 SEPTEMBER 2026 AT
             THE USER'S REQUEST. Recording that here rather than deleting the

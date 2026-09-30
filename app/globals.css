@@ -2272,8 +2272,34 @@ footer.site .disclaimer {
   color: var(--text-primary);
 }
 
-/* The collapsed citations — a <details> whose <summary> is styled as a button. */
-footer.site .sources summary {
+/* The visible author line: names in order, institutions after. */
+footer.site .credits {
+  margin: 0 0 12px;
+  color: var(--text-primary);
+}
+
+footer.site .credits-org {
+  color: var(--text-secondary);
+}
+
+/*
+  The two collapsed sections — "About this tool" and "Data sources and
+  citations" — are <details> elements whose <summary> is styled as a button.
+  They sit side by side; whichever is opened takes the whole row, so its
+  content has the footer's full width to read in rather than a button's.
+*/
+footer.site .folds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+footer.site .fold[open] {
+  flex-basis: 100%;
+}
+
+footer.site .fold summary {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -2289,36 +2315,55 @@ footer.site .sources summary {
 }
 
 /* Hide the browser's own disclosure triangle and draw one that rotates. */
-footer.site .sources summary::-webkit-details-marker {
+footer.site .fold summary::-webkit-details-marker {
   display: none;
 }
 
-footer.site .sources summary::after {
+footer.site .fold summary::after {
   content: "▸";
   font-size: 0.8em;
   transition: transform 0.15s ease;
 }
 
-footer.site .sources[open] summary::after {
+footer.site .fold[open] summary::after {
   transform: rotate(90deg);
 }
 
-footer.site .sources summary:hover {
+footer.site .fold summary:hover {
   border-color: var(--text-muted);
 }
 
-footer.site .sources summary:focus-visible {
+footer.site .fold summary:focus-visible {
   outline: 2px solid var(--series-1);
   outline-offset: 2px;
 }
 
-footer.site .sources ul {
+footer.site .fold ul {
   margin: 10px 0 0;
   padding-left: 18px;
 }
 
-footer.site .sources li {
+footer.site .fold li {
   margin-bottom: 5px;
+}
+
+/* People: name on its own line, affiliations beneath — no bullets. */
+footer.site .fold ul.people {
+  list-style: none;
+  padding-left: 0;
+}
+
+footer.site .people li {
+  margin-bottom: 8px;
+}
+
+footer.site .people strong {
+  display: block;
+  color: var(--text-primary);
+}
+
+footer.site .cite-this {
+  margin: 10px 0 0;
 }
 
 .skeleton {
