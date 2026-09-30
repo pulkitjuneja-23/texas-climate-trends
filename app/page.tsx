@@ -16,7 +16,7 @@ import {
   fieldValue,
   type Field,
 } from "@/lib/agro/climatology";
-import { convert, unitLabel, type UnitSystem } from "@/lib/agro/units";
+import { convert, unitLabel, fToC, type UnitSystem } from "@/lib/agro/units";
 import { monthlyEtToDaily, attachWaterFields } from "@/lib/agro/water";
 import { formatRange } from "@/lib/format/date";
 import { sendVisit, trackOnce } from "@/lib/analytics/client";
@@ -238,6 +238,25 @@ export default function Page() {
    */
   const [customBase, setCustomBase] = useState(CUSTOM_GDD_DEFAULT.base);
   const [customCap, setCustomCap] = useState<number | null>(null);
+
+  /**
+   * The line a day's high must reach to count as a hot day, in degC.
+   *
+   * WHY 95 degF AND NOT THE RESEARCH THRESHOLDS. Schlenker & Roberts (2009,
+   * PNAS 106:15594) put yield damage beginning at 29 degC for corn (84 degF),
+   * 30 for soybeans (86) and 32 for cotton (90). Those are right biologically
+   * and nearly useless as a Texas count: measured over May-September 1996-2025
+   * from this site's own gridMET data, 84 degF is crossed on 80-97% of days
+   * every year — in the Valley on 144-151 of 153 days whether the summer was
+   * mild or brutal — so a "vs normal" tile would read the same every season.
+   * At 95 degF the years genuinely differ: 27 to 88 days at the default
+   * location, a threefold spread between a 1-in-10 cool and hot summer.
+   *
+   * So 95 degF is where Texas summers are DISTINGUISHABLE, which is what a
+   * comparison tile needs — not where damage starts. The user chose it as the
+   * default on 30 September 2026, adjustable, so a cotton grower can set 90.
+   */
+  const [hotThresholdC, setHotThresholdC] = useState(35);
 
   const gddConfig = useMemo(() => {
     if (gddPreset !== "custom") return GDD_PRESETS[gddPreset].config;
@@ -633,12 +652,26 @@ export default function Page() {
    * move together.
    */
   const makeStat = useCallback(
-    (f: Field, fromISO: string, untilISO: string | null) => {
+    (
+      f: Field,
+      fromISO: string,
+      untilISO: string | null,
+      /**
+       * Optional per-day mapping applied before summing. With
+       * `v => v >= threshold ? 1 : 0` the "total" becomes a COUNT of days over a
+       * line — which lets the hot-days tile reuse the window, the year-by-year
+       * comparison and the coverage guard below instead of duplicating them. A
+       * day with no reading stays missing, so coverage still means "days that
+       * reported", not "days that were cool".
+       */
+      perDay?: (v: number) => number
+    ) => {
       if (!records.length || !history?.lastObserved) return null;
 
       const byDate = new Map<string, number | null>();
       for (const r of records) {
-        byDate.set(r.date.slice(0, 10), fieldValue(r, f, gddConfig));
+        const v = fieldValue(r, f, gddConfig);
+        byDate.set(r.date.slice(0, 10), v === null || !perDay ? v : perDay(v));
       }
 
       const observed = history.lastObserved.slice(0, 10);
@@ -779,6 +812,10 @@ export default function Page() {
   const gddStat = useMemo(
     () => makeStat("gdd", seasonFrom, seasonTo),
     [makeStat, seasonFrom, seasonTo]
+  );
+  const hotStat = useMemo(
+    () => makeStat("tmax", seasonFrom, seasonTo, (v) => (v >= hotThresholdC ? 1 : 0)),
+    [makeStat, seasonFrom, seasonTo, hotThresholdC]
   );
 
   /**
@@ -1216,6 +1253,72 @@ export default function Page() {
                             convert(gddStat.value - gddStat.normal, "gdd", units)
                           ).toLocaleString()}{" "}
                           vs normal
+                        </div>
+                      ))}
+                  </div>
+
+                  {/*
+                    HOT DAYS — days whose high reached the threshold, over the
+                    same window as the other tiles, against the same window in
+                    past years. The threshold is part of the LABEL and editable
+                    in place: a count of "hot days" is meaningless without the
+                    line it was counted against, the same way growing degree days
+                    are meaningless without a base. See `hotThresholdC` for why
+                    95 degF is the default and not the research thresholds.
+                  */}
+                  <div className="tile">
+                    <div
+                      className="k"
+                      title={
+                        "Days when the high reached this temperature. 95°F is the default because " +
+                        "it is where Texas summers differ most from one another. Heat damage to " +
+                        "crops starts lower (about 84°F for corn, 90°F for cotton), but in Texas " +
+                        "those are passed on most summer days, so the count barely changes year to year."
+                      }
+                    >
+                      Days ≥{" "}
+                      <input
+                        type="number"
+                        className="tile-threshold"
+                        aria-label={`Hot day threshold in ${unitLabel("temp", units)}`}
+                        value={Math.round(convert(hotThresholdC, "temp", units))}
+                        min={units === "imperial" ? 70 : 20}
+                        max={units === "imperial" ? 120 : 49}
+                        step={1}
+                        onChange={(e) => {
+                          const n = Number(e.target.value);
+                          if (!Number.isFinite(n) || e.target.value === "") return;
+                          setHotThresholdC(units === "imperial" ? fToC(n) : n);
+                        }}
+                      />
+                      {unitLabel("temp", units)}
+                    </div>
+                    <div className="v">
+                      {hotStat ? Math.round(hotStat.value) : "—"}
+                      <span className="muted" style={{ fontSize: "0.72rem", fontWeight: 500 }}>
+                        {" "}
+                        days
+                      </span>
+                    </div>
+                    {hotStat &&
+                      (hotStat.sparse ? (
+                        <div className="d" style={{ color: "var(--div-warm)", fontWeight: 600 }}>
+                          incomplete — only {hotStat.daysPresent} of {hotStat.daysExpected} days
+                          reported
+                        </div>
+                      ) : (
+                        <div
+                          className="d"
+                          style={{
+                            color:
+                              hotStat.value >= hotStat.normal
+                                ? "var(--div-warm)"
+                                : "var(--div-cool)",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {hotStat.value >= hotStat.normal ? "+" : "−"}
+                          {Math.abs(Math.round(hotStat.value - hotStat.normal))} vs normal
                         </div>
                       ))}
                   </div>

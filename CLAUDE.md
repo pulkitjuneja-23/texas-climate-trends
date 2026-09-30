@@ -2226,6 +2226,82 @@ A. **One tool's failure is not the site's failure.** The tell was there and was 
 tool had also failed identically on `dns.google`, which is obviously not down. Before concluding a
 host is broken, check the tool against a host known to be healthy.
 
+### 2026-09-30 — Idaho outages hold instead of failing; hot days replace ET; citations; one map
+
+#### "All jobs have failed", every couple of days
+
+**Every failure from 21 to 29 September — seven of them — was Idaho's server being unreachable**
+(`ECONNREFUSED 129.101.202.140:443`, or a connect timeout to `thredds.northwestknowledge.net`).
+Nothing was wrong with the data, the live copy kept serving, and the next run succeeded each time.
+
+The hold rule already did the right thing for BAD data — keep the live copy, stay green, email only
+after a day. An outage never reached it: the network error escaped the retry helper and crashed the
+job, and the very first request to Idaho came **before the manifest had been read**, so there was
+nothing to record a hold against. Fixed in `scripts/ingest-gridmet.mts`:
+
+- **The manifest is read from R2 before Idaho is contacted**, and everything `holdAndExit` reads
+  (`ALERT_*`, `latest`, `buildingRaised`) is declared above that first request. A module-level
+  `const` read before its line is a ReferenceError, not undefined — which is what would have
+  happened had only the catch been added.
+- **Every request to Idaho goes through `fromIdaho`** (three attempts, then hold if unreachable).
+  `isUnreachable` counts refused/timed-out/DNS failures and **502/503/504** as outages; a **400 or
+  plain 500 is not** — that is Idaho answering and refusing this request, which retrying will not
+  fix and which should be heard about promptly.
+- **`hold.unreachable`** marks an outage-only hold. When Idaho answers again with nothing new, the
+  hold is dropped with one manifest write instead of re-staging ~1,400 chunks of a copy that was
+  never wrong. A DATA hold still takes the full path. An outage on top of a data hold keeps the data
+  reason. During a rollover the hold keeps `building` up and always alerts, as before.
+
+**Verified by faking Idaho's responses with a `--import` preload that replaces `fetch`** — reusable
+for any future change here, and it never touches the live bucket: refused connection → holds, exit
+0; same with the live manifest loaded under `--stage-only` → holds without error; 503 → holds,
+exit 0; 400 → fails, exit 1.
+
+#### Season so far: Estimated ET and Water balance out, Hot days in
+
+At the user's request the ET and balance tiles went; both variables remain in the charts and the
+similar-years table. The freed slot now holds **"Days ≥ [95]°F"** — days whose high reached a
+threshold, over the same window, against the same window in past years.
+
+**Why 95 °F and not the research thresholds — measured, and the question will come back.**
+Schlenker & Roberts (2009, *PNAS* 106:15594) put yield damage beginning at 29 °C corn (84 °F),
+30 °C soybeans, 32 °C cotton (90 °F). Correct biologically and nearly useless as a Texas count.
+May–September 1996–2025, this site's own gridMET data:
+
+| threshold | Blackland | Lubbock | Valley (Weslaco) | Panhandle (Dalhart) |
+|---|---|---|---|---|
+| 84 °F | 132 days (121–141) | 119 (107–133) | **148 (144–151)** | 105 (89–122) |
+| 90 °F | 102 (85–122) | 82 (62–103) | 129 (115–140) | 68 (51–93) |
+| **95 °F** | **58 (27–88)** | **40 (17–63)** | **75 (51–106)** | **28 (11–49)** |
+
+(ranges are 1-in-10 cool to 1-in-10 hot summers). At 84 °F the Valley crosses the line on 144–151
+of 153 days whether the summer was mild or brutal, so a "vs normal" tile would read the same every
+year. **95 °F is where Texas summers are distinguishable — not where damage starts.** The user chose
+it as the default, **editable in the tile label**, so a cotton grower can set 90.
+
+`makeStat` gained an optional `perDay` mapping so `v >= t ? 1 : 0` turns its sum into a COUNT —
+reusing the window, the shifted-year comparison and the coverage guard rather than duplicating them.
+A missing day stays missing, so coverage still means "days that reported", not "days that were cool".
+
+**Verified against an independent recount** from raw `/api/history`: 95 °F → 78 days, +19.6 (tile
++20); 90 °F → 118, +15.3 (tile +15); 212 of 212 days reported. No overflow at 390/360/320 px — worth
+checking because an input inside a tile is exactly the August date-picker overflow trap.
+
+#### Footer: disclaimer first, then citations checked against the registries
+
+The disclaimer leads (it absorbed "What this is not"), then formal citations. **Each DOI was checked
+against Crossref or DataCite rather than written from memory**, which caught two things: OpenET's
+article (Melton et al.) is **2022** 58(6) though it appeared online in 2021, and Open-Meteo's
+registered year is **2024**, not the 2023 that circulates. NASA POWER's acknowledgement is verbatim
+as it asks; OpenStreetMap carries its required attribution.
+
+#### The map showed several worlds stitched together
+
+No `minZoom`, so at zoom 0 the world was 256 px wide and Leaflet tiled copies to fill the box. Now
+`minZoom={4}` (the world is 4,096 px there, wider than this map ever renders), `maxBounds` around the
+US and Mexico with viscosity 1 so it cannot be dragged into an ocean, and `noWrap` on the tiles.
+Verified: fully zoomed out shows one continent and the zoom-out button disables itself.
+
 ## Next up
 
 Items 1, 4 and 7 of the original list are done (gridMET as a source, OpenET, shipped to Vercel).

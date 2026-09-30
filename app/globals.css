@@ -921,6 +921,37 @@ button:disabled {
   font-size: 0.74rem;
 }
 
+/*
+  The threshold inside a tile label, e.g. "DAYS ≥ [95]°F". Small and borderless
+  until hovered or focused, so the label still reads as a label — but it is an
+  input, because the count means nothing without the line it was counted
+  against, and the reader may know a better line for their crop.
+*/
+.tile-threshold {
+  width: 3.2em;
+  padding: 0 2px;
+  min-height: 0;
+  font: inherit;
+  color: var(--text-primary);
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  border-radius: 3px;
+  text-align: center;
+  -moz-appearance: textfield;
+}
+
+.tile-threshold:hover,
+.tile-threshold:focus {
+  border-style: solid;
+  background: var(--surface-raised);
+}
+
+.tile-threshold::-webkit-outer-spin-button,
+.tile-threshold::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 /* A button that reads as a link — for an action that undoes a setting rather
    than performing one. */
 .link-btn {
