@@ -17,8 +17,8 @@ import {
   type Field,
 } from "@/lib/agro/climatology";
 import { convert, unitLabel, type UnitSystem } from "@/lib/agro/units";
-import { monthlyEtToDaily, attachWaterFields, balanceWording } from "@/lib/agro/water";
-import { formatDate, formatRange } from "@/lib/format/date";
+import { monthlyEtToDaily, attachWaterFields } from "@/lib/agro/water";
+import { formatRange } from "@/lib/format/date";
 import { sendVisit, trackOnce } from "@/lib/analytics/client";
 import type { PickMethod } from "@/lib/analytics/visitor";
 import type { MonthlyEt } from "@/lib/sources/openet";
@@ -780,19 +780,6 @@ export default function Page() {
     () => makeStat("gdd", seasonFrom, seasonTo),
     [makeStat, seasonFrom, seasonTo]
   );
-  /**
-   * "Estimated" is the honest word: OpenET publishes one figure per month, and
-   * these tiles divide it across the month's days to line up with an arbitrary
-   * start date. Accurate to the month, interpolated within it.
-   */
-  const etStat = useMemo(
-    () => makeStat("et", seasonFrom, seasonTo),
-    [makeStat, seasonFrom, seasonTo]
-  );
-  const balanceStat = useMemo(
-    () => makeStat("balance", seasonFrom, seasonTo),
-    [makeStat, seasonFrom, seasonTo]
-  );
 
   /**
    * Last seven days at a glance. Costs nothing — it reads the tail of the
@@ -882,18 +869,6 @@ export default function Page() {
     scrollToStage();
   }, [panel, scrollToStage]);
 
-  /**
-   * ET can end earlier than rainfall — it stops at a satellite data gap while
-   * rain runs to yesterday. Showing "21.9 in rain" beside "14.8 in ET" and a
-   * "-4.4 in deficit" is nonsense unless the reader knows the last two cover a
-   * SHORTER period. So any tile whose data ends early says so.
-   */
-  /** The range a truncated water tile actually covers, honouring the chosen start date. */
-  const etRangeLabel = useCallback(
-    (through: string | undefined) =>
-      `${formatDate(seasonFrom)} – ${through ? formatDate(through) : "?"} only`,
-    [seasonFrom]
-  );
 
   /**
    * The window every tile in the card is describing, written out once.
@@ -1245,95 +1220,15 @@ export default function Page() {
                       ))}
                   </div>
 
-                  <div className="tile">
-                    <div className="k">Estimated ET</div>
-                    <div className="v">
-                      {etStat
-                        ? convert(etStat.value, "precip", units).toFixed(precipDp)
-                        : waterLoading
-                        ? "…"
-                        : "n/a"}
-                      {etStat && (
-                        <span className="muted" style={{ fontSize: "0.72rem", fontWeight: 500 }}>
-                          {" "}
-                          {unitLabel("precip", units)}
-                        </span>
-                      )}
-                    </div>
-                    {/*
-                      When ET ends earlier than rain, the period is the single
-                      most important thing on the tile — without it a reader
-                      compares two different spans and sees a surplus that is
-                      not there. Stated as a plain date range; the reason lives
-                      in the tooltip so the tile stays short.
-                    */}
-                    <div
-                      className="d"
-                      style={{ color: etStat?.stale ? "var(--div-warm)" : undefined }}
-                      title={
-                        etStat?.stale
-                          ? "The satellite could not measure some months (too cloudy), so the total stops there."
-                          : undefined
-                      }
-                    >
-                      {etStat
-                        ? etStat.stale
-                          ? etRangeLabel(etStat.throughDate)
-                          : "water used by the crop"
-                        : "needs satellite data"}
-                    </div>
-                  </div>
-
                   {/*
-                    Named "Water balance", not "Deficit". A heading of "Deficit"
-                    above a signed value reads both ways at once. The magnitude
-                    is shown unsigned with the word doing the work instead.
+                    ESTIMATED ET AND WATER BALANCE WERE REMOVED FROM THIS CARD
+                    on 30 September 2026 at the user's request, leaving rain and
+                    growing degree days. Both variables are still in the season
+                    chart, the year-by-year trend and the similar-years table —
+                    only the headline tiles went. Their arithmetic (the gap rule,
+                    the coverage guard) lives on in `makeStat`, which serves any
+                    field, so restoring a tile is markup only.
                   */}
-                  <div className="tile">
-                    <div className="k">Water balance</div>
-                    <div
-                      className="v"
-                      style={{
-                        color: balanceStat
-                          ? balanceWording(balanceStat.value).colorVar
-                          : undefined,
-                      }}
-                    >
-                      {balanceStat
-                        ? Math.abs(convert(balanceStat.value, "precip", units)).toFixed(precipDp)
-                        : waterLoading
-                        ? "…"
-                        : "n/a"}
-                      {balanceStat && (
-                        <span style={{ fontSize: "0.8rem", fontWeight: 600 }}>
-                          {" "}
-                          {unitLabel("precip", units)}{" "}
-                          {balanceWording(balanceStat.value).short.toLowerCase()}
-                        </span>
-                      )}
-                    </div>
-                    <div className="d muted">
-                      {balanceStat
-                        ? balanceStat.sparse
-                          ? `incomplete — only ${balanceStat.daysPresent} of ${balanceStat.daysExpected} days reported`
-                          : balanceWording(balanceStat.value).long
-                        : "rain minus ET"}
-                    </div>
-                    {/*
-                      "vs <source> rain" was dropped: the card header already
-                      carries the source badge, so it was clutter competing with
-                      the one thing that actually changes how you read the number.
-                    */}
-                    {balanceStat?.stale && (
-                      <div
-                        className="small"
-                        style={{ marginTop: 3, fontSize: "0.68rem", color: "var(--div-warm)" }}
-                        title="The satellite could not measure some months (too cloudy), so the comparison stops there."
-                      >
-                        {etRangeLabel(balanceStat.throughDate)}
-                      </div>
-                    )}
-                  </div>
                 </div>
               )}
 
@@ -1467,31 +1362,106 @@ export default function Page() {
         ) : null}
 
         <footer className="site">
-          <p>
-            <strong>Data sources.</strong>{" "}
-            {history?.source.attribution ?? "NASA POWER"} · Most recent days from the nearest
-            airport station via the{" "}
-            <a href="https://mesonet.agron.iastate.edu/">Iowa Environmental Mesonet</a>. Forecast
-            days 1–7 from the{" "}
-            <a href="https://www.weather.gov/documentation/services-web-api">NOAA/NWS API</a>; days
-            8–16 from <a href="https://open-meteo.com/">Open-Meteo</a>; weeks 2–4 outlooks from the{" "}
-            <a href="https://www.cpc.ncep.noaa.gov/">NOAA Climate Prediction Center</a>. County crop
-            yields from{" "}
-            <a href="https://quickstats.nass.usda.gov/">
-              USDA National Agricultural Statistics Service, Quick Stats
-            </a>
-            . Geocoding by{" "}
-            <a href="https://nominatim.openstreetmap.org/">Nominatim</a>, map tiles ©{" "}
-            <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors.
+          {/*
+            DISCLAIMER FIRST, SOURCES SECOND — the order is the point. A reader
+            who stops after one paragraph should leave knowing these are
+            estimates to be used with care, not where the estimates came from.
+            It absorbed the old "What this is not" paragraph, whose content
+            (unofficial normals, similar years are not a forecast, not your
+            gauge) is part of the same warning.
+          */}
+          <p className="disclaimer">
+            <strong>Please use with care.</strong> The historical weather on this site comes
+            from gridded, interpolated datasets — estimates built from weather stations, radar
+            and satellites spread across a grid — not from a measurement taken in your field.
+            They can differ from what actually fell or was felt at your location, especially
+            rainfall from individual storms. Normals are calculated from {START_YEAR}–
+            {currentYear - 1} at a single grid point and are not the official NOAA 1991–2020
+            station normals. Similar years compare past seasons with this one; they are not a
+            forecast. Use these figures alongside your own observations, and not as the only
+            basis for irrigation, planting or other management decisions.
           </p>
-          <p>
-            <strong>What this is not.</strong> Normals are computed from {START_YEAR}–
-            {currentYear - 1} at a single grid point, not the official NOAA 1991–2020 station
-            normals, so they will not match a NWS climate report exactly. Similar years rank past
-            seasons against this one; they are not a forecast, and a similar start has often been
-            followed by a very different finish. Nothing here is validated against your own rain
-            gauge and it should not be the only input to an irrigation or planting decision.
-          </p>
+
+          {/*
+            FORMAL CITATIONS, verified against the registries on 30 September
+            2026 — Crossref for the three journal articles, DataCite for the
+            Open-Meteo software record. Two things worth knowing if this is
+            edited:
+            - OpenET's article appeared online in 2021 but is volume 58 issue 6
+              of 2022; the issue year is the one to cite.
+            - Open-Meteo's registered year is 2024, not the 2023 that circulates.
+            NASA POWER asks for its acknowledgement sentence verbatim rather
+            than a paper, and OpenStreetMap's licence requires the
+            "© OpenStreetMap contributors" wording.
+          */}
+          <div className="sources">
+            <p>
+              <strong>Data sources and citations</strong>
+            </p>
+            <ul>
+              <li>
+                <strong>Historical weather (gridMET).</strong> Abatzoglou, J. T. (2013).
+                Development of gridded surface meteorological data for ecological applications
+                and modelling. <em>International Journal of Climatology</em>, 33(1), 121–131.{" "}
+                <a href="https://doi.org/10.1002/joc.3413">https://doi.org/10.1002/joc.3413</a>
+              </li>
+              <li>
+                <strong>Historical weather (NASA POWER).</strong> These data were obtained from
+                the NASA Langley Research Center (LaRC) POWER Project funded through the NASA
+                Earth Science/Applied Science Program.{" "}
+                <a href="https://power.larc.nasa.gov/">https://power.larc.nasa.gov/</a>
+              </li>
+              <li>
+                <strong>Most recent days.</strong> Nearest airport (ASOS) weather station, via
+                the Iowa Environmental Mesonet, Iowa State University.{" "}
+                <a href="https://mesonet.agron.iastate.edu/">
+                  https://mesonet.agron.iastate.edu/
+                </a>
+              </li>
+              <li>
+                <strong>Crop water use (OpenET).</strong> Melton, F. S., et al. (2022). OpenET:
+                Filling a critical data gap in water management for the western United States.{" "}
+                <em>Journal of the American Water Resources Association</em>, 58(6), 971–994.{" "}
+                <a href="https://doi.org/10.1111/1752-1688.12956">
+                  https://doi.org/10.1111/1752-1688.12956
+                </a>{" "}
+                Accessed through Google Earth Engine: Gorelick, N., Hancher, M., Dixon, M.,
+                Ilyushchenko, S., Thau, D., &amp; Moore, R. (2017). Google Earth Engine:
+                Planetary-scale geospatial analysis for everyone.{" "}
+                <em>Remote Sensing of Environment</em>, 202, 18–27.{" "}
+                <a href="https://doi.org/10.1016/j.rse.2017.06.031">
+                  https://doi.org/10.1016/j.rse.2017.06.031
+                </a>
+              </li>
+              <li>
+                <strong>Forecast, days 1–7.</strong> NOAA National Weather Service API.{" "}
+                <a href="https://www.weather.gov/documentation/services-web-api">
+                  https://www.weather.gov/documentation/services-web-api
+                </a>
+              </li>
+              <li>
+                <strong>Forecast, days 8–16.</strong> Zippenfenig, P. (2024). Open-Meteo.com
+                Weather API [Computer software]. Zenodo.{" "}
+                <a href="https://doi.org/10.5281/zenodo.7970649">
+                  https://doi.org/10.5281/zenodo.7970649
+                </a>
+              </li>
+              <li>
+                <strong>Outlook, weeks 2–4.</strong> NOAA Climate Prediction Center.{" "}
+                <a href="https://www.cpc.ncep.noaa.gov/">https://www.cpc.ncep.noaa.gov/</a>
+              </li>
+              <li>
+                <strong>County crop yields.</strong> USDA National Agricultural Statistics
+                Service, Quick Stats.{" "}
+                <a href="https://quickstats.nass.usda.gov/">https://quickstats.nass.usda.gov/</a>
+              </li>
+              <li>
+                <strong>Maps and places.</strong> Map tiles and place search ©{" "}
+                <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors,
+                via Nominatim. County boundaries from the U.S. Census Bureau (TIGERweb).
+              </li>
+            </ul>
+          </div>
           {/*
             THE "WHAT WE RECORD" PARAGRAPH WAS REMOVED ON 21 SEPTEMBER 2026 AT
             THE USER'S REQUEST. Recording that here rather than deleting the

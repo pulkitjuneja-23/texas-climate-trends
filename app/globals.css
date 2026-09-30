@@ -2222,6 +2222,36 @@ footer.site {
 
 footer.site a {
   color: var(--text-primary);
+  /* Citations carry long DOIs and URLs, which would otherwise push a phone
+     layout sideways rather than wrap. */
+  overflow-wrap: anywhere;
+}
+
+/*
+  The disclaimer leads the footer and is set apart from the citations below
+  it: a reader who stops after one paragraph should leave knowing these are
+  estimates, which is the one thing the footer most needs to say.
+*/
+footer.site .disclaimer {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--warning);
+  background: color-mix(in srgb, var(--warning) 9%, transparent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: var(--text-primary);
+}
+
+footer.site .sources p {
+  margin: 0 0 6px;
+}
+
+footer.site .sources ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+footer.site .sources li {
+  margin-bottom: 5px;
 }
 
 .skeleton {
