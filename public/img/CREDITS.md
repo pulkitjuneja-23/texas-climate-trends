@@ -1,9 +1,14 @@
 # Photograph credits and licences
 
-Every image here is **public domain** — a work of the United States federal
-government, which carries no copyright. None requires a licence fee, permission,
-or attribution, and none becomes a problem if this repository goes public or the
-site is ever monetised.
+Every landscape photograph here is **public domain** (mostly works of the United
+States federal government, which carry no copyright). None requires a licence
+fee, permission, or attribution, and none becomes a problem if this repository
+goes public or the site is ever monetised.
+
+**The exception is `people/`.** The three author photographs belong to their
+original owners (see "Author photographs" below). They are shown on the site
+with the authors' knowledge, but they are NOT covered by the repository's MIT
+license and may not be reused from here.
 
 Credit is given anyway. It costs nothing and it is the same rule the rest of the
 project follows: say where a thing came from.

@@ -1,0 +1,30 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "Texas Weather Explorer"
+abstract: >-
+  A farmer-facing website showing 30 years of daily weather history for any
+  point in Texas, with a visible choice of data source, season-to-date
+  tracking against the long-term range, analog-year matching, county crop
+  yields, satellite water use, and a three-tier forecast.
+authors:
+  - given-names: Pulkit
+    family-names: Juneja
+    affiliation: "Texas A&M University"
+  - given-names: Gurjinder S.
+    family-names: Baath
+    affiliation: "Texas A&M AgriLife Research, Temple"
+  - given-names: Joseph A.
+    family-names: Burke
+    affiliation: "Texas A&M AgriLife Research, Lubbock"
+license: MIT
+url: "https://farmwth.com"
+repository-code: "https://github.com/pulkitjuneja-23/texas-climate-trends"
+keywords:
+  - agriculture
+  - weather
+  - climate
+  - Texas
+  - decision support
+  - gridMET
+  - OpenET

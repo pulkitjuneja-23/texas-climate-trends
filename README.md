@@ -217,7 +217,31 @@ from Vercel's data cache rather than re-hitting NASA.
 - Freeze/frost date drift — first/last frost by year with trend
 - React Native / Expo app sharing `lib/` unchanged
 
-## Attribution
+## Data sources
 
-NASA POWER (Langley Research Center) · Open-Meteo (CC BY 4.0, ECMWF ERA5/IFS) · NOAA/NWS
-api.weather.gov · NOAA Climate Prediction Center · Nominatim / OpenStreetMap contributors
+The site retrieves its data from these providers; it does not own any of it, and each keeps its
+own terms of use. Full formal citations are in the **Data sources and citations** section at the
+foot of the website.
+
+gridMET (University of Idaho) · NASA POWER (Langley Research Center) · OpenET ensemble via Google
+Earth Engine · Daymet (ORNL DAAC) · Iowa Environmental Mesonet (ASOS stations) · NOAA National
+Weather Service (api.weather.gov) · NOAA Climate Prediction Center · Open-Meteo (CC BY 4.0) ·
+USDA NASS Quick Stats · U.S. Census Bureau TIGERweb · Nominatim / © OpenStreetMap contributors
+
+## License
+
+The **code and documentation** are released under the [MIT License](LICENSE): free to use, change
+and share, including commercially, as long as the copyright notice is kept.
+
+The license does **not** cover the third-party data above, or the images in `public/img/` (see
+[public/img/CREDITS.md](public/img/CREDITS.md)). The photographs of people belong to their
+original owners and are not licensed for reuse.
+
+Anyone running their own copy needs their own accounts for the services it uses (Google Earth
+Engine, Supabase, Cloudflare R2, Vercel) and must follow those services' terms. Several free tiers,
+including Earth Engine's and Open-Meteo's, are for non-commercial use only.
+
+## How to cite
+
+GitHub's **Cite this repository** button (top right of the repository page) gives a ready-made
+citation from [CITATION.cff](CITATION.cff).
