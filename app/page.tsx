@@ -112,9 +112,13 @@ function readUrlDefaults(): {
   // at rather than the default.
   const rawPanel = q.get("panel");
   const panel = PANELS.some((p) => p.id === rawPanel) ? (rawPanel as PanelId) : null;
+  // The label is whatever the link's author typed, so it is flattened to one
+  // short line: a crafted ?place= once wrote line breaks and formulas into the
+  // CSV export's provenance header.
+  const rawLabel = q.get("place")?.replace(/[\u0000-\u001f\u007f]+/g, " ").trim().slice(0, 120);
   const place =
     latRaw && lonRaw && Number.isFinite(lat) && Number.isFinite(lon)
-      ? { lat, lon, label: q.get("place") ?? `${lat.toFixed(3)}°, ${lon.toFixed(3)}°` }
+      ? { lat, lon, label: rawLabel || `${lat.toFixed(3)}°, ${lon.toFixed(3)}°` }
       : null;
   return { place, source, variable, trend, panel };
 }
@@ -378,7 +382,7 @@ export default function Page() {
     setHistError(null);
 
     fetch(
-      `/api/history?lat=${place.lat}&lon=${place.lon}&startYear=${START_YEAR}&source=${sourceId}`,
+      `/api/history?lat=${place.lat}&lon=${place.lon}&startYear=${START_YEAR}&source=${encodeURIComponent(sourceId)}`,
       { signal: ctrl.signal }
     )
       .then(async (r) => {

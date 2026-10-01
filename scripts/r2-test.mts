@@ -24,8 +24,9 @@ try {
   process.exit(1);
 }
 
-const mask = (v?: string) =>
-  !v ? "MISSING" : `${v.length} chars, starts "${v.slice(0, 6)}"`;
+// Length only: even a few characters of a secret should not end up in a
+// screenshot or a pasted terminal log.
+const mask = (v?: string) => (!v ? "MISSING" : `${v.length} chars`);
 
 console.log("what is configured:");
 console.log(`  R2_ACCOUNT_ID        ${mask(env.R2_ACCOUNT_ID)}`);

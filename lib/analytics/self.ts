@@ -71,9 +71,13 @@ export function isSelf(): boolean {
 export function isRealVisit(): boolean {
   if (typeof window === "undefined") return false;
   const h = window.location.hostname;
-  if (h === "localhost" || h === "127.0.0.1" || h.endsWith(".local")) return false;
-  // Vercel preview URLs carry the git branch or a deployment hash; production
-  // is the bare project domain.
-  if (/-[a-z0-9]{9,}\.vercel\.app$/i.test(h)) return false;
-  return true;
+  // Only the production addresses count. Naming them exactly is the reliable
+  // test: the earlier pattern for preview hosts (/-[a-z0-9]{9,}\.vercel\.app$/)
+  // never matched this project's previews, which end "-pulkitjuneja-23.vercel.app",
+  // so preview and development page views were logged as real visits.
+  return PRODUCTION_HOSTS.has(window.location.hostname);
 }
+
+/** Every address the live site answers on. The vercel.app one redirects, but a
+ * visit that lands there before redirecting is still a real visitor. */
+const PRODUCTION_HOSTS = new Set(["farmwth.com", "www.farmwth.com", "texas-climate-trends.vercel.app"]);

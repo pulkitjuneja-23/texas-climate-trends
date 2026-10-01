@@ -28,7 +28,19 @@ export default function SiteAnalytics() {
       beforeSend={(event) => {
         // Returning null drops the event entirely — nothing is sent.
         if (isSelf()) return null;
-        return event;
+        try {
+          const url = new URL(event.url);
+          // The private insights page is opened with its key in the address.
+          // Its views are not traffic worth counting, and the key must never
+          // leave for a third party, so nothing about it is sent.
+          if (url.pathname.startsWith("/insights")) return null;
+          // The query string carries a shared link's lat/lon — someone's field.
+          // Our own visit log keeps only the county; Vercel gets only the path.
+          url.search = "";
+          return { ...event, url: url.toString() };
+        } catch {
+          return null;
+        }
       }}
     />
   );

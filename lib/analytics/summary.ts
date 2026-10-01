@@ -210,7 +210,13 @@ async function readTable<T>(
   try {
     for (let from = 0; from < MAX_ROWS; from += PAGE) {
       const to = Math.min(from + PAGE, MAX_ROWS) - 1;
-      const res = await fetch(`${BASE}/rest/v1/${table}?select=${select}&order=at.asc`, {
+      // NEWEST first, with id breaking ties so no row is skipped or repeated
+      // across pages. If the table outgrows MAX_ROWS it is the oldest history
+      // that is left out — what the page's note says. Reading oldest-first (as
+      // before 2026-10-01) dropped the NEWEST rows instead, so a burst of junk
+      // beacons could have hidden every genuine visit after it. The rows are put
+      // back into oldest-first order below, which is what fold() expects.
+      const res = await fetch(`${BASE}/rest/v1/${table}?select=${select}&order=at.desc,id.desc`, {
         headers: {
           apikey: KEY as string,
           Authorization: `Bearer ${KEY}`,
@@ -264,6 +270,7 @@ async function readTable<T>(
   } finally {
     clearTimeout(timer);
   }
+  rows.reverse();
   return { ok: true, rows, truncated: rows.length >= MAX_ROWS, reduced };
 }
 

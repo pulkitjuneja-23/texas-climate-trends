@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { TEXAS_BOUNDS } from "@/lib/geo";
+import { TEXAS_BOUNDS, validateLatLon } from "@/lib/geo";
+import { enforceLimit, spaced, rejection, RequestRejected } from "@/lib/api/guard";
 
 export const runtime = "nodejs";
 export const revalidate = 86400;
@@ -14,6 +15,23 @@ export const revalidate = 86400;
  */
 
 const UA = "TexasClimateTrends/0.1 (agricultural decision support; contact via repo issues)";
+
+/**
+ * Nominatim's usage policy, enforced HERE rather than only in the browser.
+ *
+ * Submit-only search and per-query caching live in LocationPicker, but anyone
+ * can call this route directly, and every call carries the UA above. Unlimited,
+ * it let any script bulk-geocode under the project's name — and a block from
+ * Nominatim would break town search for every grower. So: a short query cap,
+ * a per-visitor limit, and at most one upstream call per second per instance.
+ */
+const MAX_QUERY_CHARS = 200;
+
+async function nominatimSlot(): Promise<void> {
+  if (!(await spaced("nominatim", 1000, 3000))) {
+    throw new RequestRejected("Search is busy. Please try again in a few seconds.", 429);
+  }
+}
 
 interface NominatimPlace {
   lat: string;
@@ -59,14 +77,20 @@ export async function GET(req: Request) {
   const lon = url.searchParams.get("lon");
 
   try {
+    enforceLimit(req, "geocode", 20);
+
     if (lat && lon) {
+      // Map clicks may fall just outside Texas (the page then says so), so
+      // reverse lookups are not bounded to Texas, only checked to be numbers.
+      const point = validateLatLon(lat, lon);
       const params = new URLSearchParams({
         format: "jsonv2",
-        lat,
-        lon,
+        lat: point.lat.toFixed(5),
+        lon: point.lon.toFixed(5),
         zoom: "10",
         addressdetails: "1",
       });
+      await nominatimSlot();
       const res = await fetch(`https://nominatim.openstreetmap.org/reverse?${params}`, {
         headers: { "User-Agent": UA },
         next: { revalidate: 86400 },
@@ -88,6 +112,9 @@ export async function GET(req: Request) {
     if (!q || q.trim().length < 2) {
       return NextResponse.json({ results: [] });
     }
+    if (q.length > MAX_QUERY_CHARS) {
+      throw new RequestRejected("That search is too long.");
+    }
 
     const params = new URLSearchParams({
       format: "jsonv2",
@@ -100,6 +127,7 @@ export async function GET(req: Request) {
       bounded: "0",
     });
 
+    await nominatimSlot();
     const res = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, {
       headers: { "User-Agent": UA },
       next: { revalidate: 86400 },
@@ -120,6 +148,10 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ results });
   } catch (e) {
+    const refused = rejection(e);
+    if (refused) {
+      return NextResponse.json({ error: refused.error, results: [] }, { status: refused.status });
+    }
     const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: msg, results: [] }, { status: 502 });
   }

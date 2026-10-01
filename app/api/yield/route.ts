@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { validateLatLon } from "@/lib/geo";
+import { validateLatLon, inTexas } from "@/lib/geo";
 import { readCountyYields, yieldEnabled } from "@/lib/yield/read";
+import { overLimit, clientKey, DEGRADED_CACHE } from "@/lib/api/guard";
 
 /**
  * GET /api/yield?lat=&lon=
@@ -27,6 +28,13 @@ export async function GET(req: Request) {
   try {
     const { lat, lon } = validateLatLon(url.searchParams.get("lat"), url.searchParams.get("lon"));
 
+    if (overLimit("yield", clientKey(req), 60)) {
+      return NextResponse.json(
+        { available: false, reason: "Too many requests. Please wait a minute." },
+        { status: 429 }
+      );
+    }
+
     if (!yieldEnabled) {
       return NextResponse.json(
         { available: false, reason: "No yield store configured." },
@@ -46,7 +54,13 @@ export async function GET(req: Request) {
         },
         {
           status: 200,
-          headers: { "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400" },
+          headers: {
+            // Outside Texas "no yields" is a fact; inside Texas it may be a
+            // failed read of the store, so it is held at the CDN for a minute.
+            "Cache-Control": inTexas(lat, lon)
+              ? DEGRADED_CACHE
+              : "public, s-maxage=3600, stale-while-revalidate=86400",
+          },
         }
       );
     }

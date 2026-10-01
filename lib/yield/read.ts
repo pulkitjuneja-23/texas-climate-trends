@@ -37,7 +37,19 @@ export const yieldEnabled = Boolean(BASE);
 
 /** Quarterly data. An hour of staleness is irrelevant; a slow read is not. */
 const TTL_MS = 60 * 60 * 1000;
+/**
+ * How long a FAILED read is remembered. A transient R2 timeout used to be held
+ * as "no store" for the full hour, so one blip blanked the yield column on that
+ * instance until it expired. A minute still stops a dead bucket being re-asked
+ * on every request.
+ */
+const FAILURE_TTL_MS = 60 * 1000;
 const FETCH_TIMEOUT_MS = 8000;
+
+/** Cache stamp that makes a null (failed) read expire after FAILURE_TTL_MS. */
+function stamp(ok: unknown): number {
+  return ok ? Date.now() : Date.now() - TTL_MS + FAILURE_TTL_MS;
+}
 
 interface Cached<T> {
   at: number;
@@ -73,7 +85,7 @@ async function getCountyIndex(): Promise<CountyIndex | null> {
   if (v && !ok) {
     console.warn(`[yield] county index version ${v.version}, expected ${COUNTY_INDEX_VERSION}`);
   }
-  countyCache = { at: Date.now(), value: ok };
+  countyCache = { at: stamp(ok), value: ok };
   return ok;
 }
 
@@ -84,7 +96,7 @@ async function getStore(): Promise<YieldStore | null> {
   if (v && !ok) {
     console.warn(`[yield] store version ${v.version}, expected ${YIELD_STORE_VERSION}`);
   }
-  storeCache = { at: Date.now(), value: ok };
+  storeCache = { at: stamp(ok), value: ok };
   return ok;
 }
 

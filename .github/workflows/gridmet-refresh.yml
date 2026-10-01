@@ -58,6 +58,11 @@ concurrency:
   group: gridmet-archive
   cancel-in-progress: false
 
+# The job only reads this repository and never writes back to it with the
+# GitHub token, so the token gets read access and nothing more.
+permissions:
+  contents: read
+
 jobs:
   refresh:
     runs-on: ubuntu-latest
@@ -66,12 +71,18 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - uses: actions/checkout@v4
+      # Actions are pinned to an exact commit, not the movable v4 tag, because
+      # these steps run beside the R2 write keys. Update the hash to upgrade.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # Nothing after checkout needs the GitHub token, so it is not left in
+          # .git/config while the steps holding the R2 keys run.
+          persist-credentials: false
 
       # Node 24 for two reasons: built-in zstd (zlib.zstdCompressSync), which is
       # why the archive code needs no compression dependency, and type stripping
       # so the .mts script runs without a build step.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "24"
 

@@ -136,14 +136,17 @@ Same two values go into Vercel:
 
 1. Vercel dashboard → your project → **Settings** → **Environment Variables**
 2. Add `SUPABASE_URL` and `SUPABASE_SERVICE_KEY`
-3. Tick **Production**, **Preview**, and **Development**
+3. Tick **Production only** (the service key can read and change every table, so it must never be
+   inside a preview build; see DEPLOY.md)
 4. Redeploy
 
 ## Later: keeping it tidy
 
 The free tier is 500 MB. Permanently-stored years accumulate, so eventually it
-needs trimming. `supabase/schema.sql` installs a function for this — run it from
-the SQL Editor whenever you want:
+needs trimming. `supabase/schema.sql` installs a function for this, and the end
+of that file has a one-line command to run it automatically every night (turn on
+the `pg_cron` extension first under Database → Extensions). Or run it from the
+SQL Editor whenever you want:
 
 ```sql
 select * from evict_cache();

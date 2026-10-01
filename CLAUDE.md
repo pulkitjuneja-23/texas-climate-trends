@@ -2302,6 +2302,68 @@ No `minZoom`, so at zoom 0 the world was 256 px wide and Leaflet tiled copies to
 US and Mexico with viscosity 1 so it cannot be dragged into an ocean, and `noWrap` on the tiles.
 Verified: fully zoomed out shows one continent and the zoom-out button disables itself.
 
+### 2026-10-01 — Security audit before going public, and the fixes
+
+A full source-only audit (Cloudflare `security-audit` skill, standard profile, 34 agents) ran
+before the repo goes public. Report, ledger and per-lead validation plans are OUTSIDE the repo at
+`~/security-audit-skill/texas-climate-trends/run-1/` (REPORT.md, NEEDS-VALIDATION.md). Result:
+**0 confirmed, 13 needs-validation, 1 rejected; no secret anywhere in the tree or its 60-commit
+history.** Nothing could be confirmed because this Windows host has no OS sandbox, so no target code
+ran during the audit. The skill's validators refuse input on Windows (no `O_NOFOLLOW` in Node) and
+were called through their exported `validateDocument()` instead.
+
+**Vercel env scopes (done by the user in the dashboard).** The runbooks had said to tick
+Production, Preview AND Development for the Supabase service key, the Earth Engine private key and
+`INSIGHTS_KEY`. Code has no environment gate, so any preview build — including, once public, one
+built from a stranger's fork PR — would hold production authority. The three runbooks now say
+**Production only**, and the user removed the Preview/Development `INSIGHTS_KEY` rows (the other
+secrets were already Production-only).
+
+**Fixed in code (branch `security-hardening`):**
+- **next 14.2.15 → 14.2.35, fflate 0.8.2 → 0.8.3.** Clears the Dec 2025 Server Components DoS
+  advisories and fflate's ZIP64 infinite loop. **Many Next.js advisories are fixed only in 15.5+**;
+  most need features this site does not use (next/image, middleware, rewrites, Server Actions),
+  but several DoS ones apply to any App Router app. Moving to Next 15 means React 19 and reopens
+  the "Next 14 + React 18" decision, so it is the user's call, not done.
+- **`lib/api/guard.ts` — one place for request limits.** Every data route now refuses points
+  outside the same Texas box the page already used to decide whether to ask (`inTexas`), takes
+  whole years clamped to `HISTORY_START_YEAR`..now (`endYear=1e300` used to loop until the function
+  ran out of memory; pre-1995 years forced Earth Engine), and has a per-IP, per-instance rate
+  limit (60/min data routes, 20/min geocode, 30/60 per min beacons). **Per-instance only** —
+  the global control is a Vercel Firewall rate-limit rule.
+- `/api/et` buffer is fixed at the 100 m default (was caller-chosen up to 2 km, ~400x the Earth
+  Engine work); raw Earth Engine `detail` no longer returned.
+- `/api/forecast` rounds to 0.01° before going upstream, so nudged coordinates cannot each spend a
+  fresh NWS and Open-Meteo call. NWS second hop pinned to `https://api.weather.gov/`.
+- `/api/geocode`: 200-char query cap, reverse lat/lon validated, Nominatim's 1 req/s enforced on the
+  server (`spaced()`), not just in the browser.
+- **Failed answers no longer cached for hours.** `DEGRADED_CACHE` (s-maxage=60) whenever a layer
+  failed, in history, et, forecast and yield; a failed yield-store read is remembered 1 min, not 1 h.
+- `validateLatLon` rejects missing coordinates (`Number(null) === 0` had made them 0°, 0°).
+- CSV: provenance lines flattened and formula-defused, text cells starting `= + - @` get a leading
+  apostrophe; **numbers, including negatives, are untouched**. `?place=` is flattened and capped.
+- `/insights` reads newest-first (`order=at.desc,id.desc`) then reverses, so a full table loses the
+  OLDEST history, as its note says. It used to drop the newest.
+- Analytics: `/insights` views are never sent to Vercel, and the query string (key, lat/lon) is
+  stripped from every event. `isRealVisit` now names the three production hosts; the old preview
+  regex never matched `-pulkitjuneja-23.vercel.app` hosts.
+- `next.config.mjs` headers: `frame-ancestors 'none'`, `X-Frame-Options`, `Referrer-Policy`
+  (`no-referrer` on /insights), `nosniff`.
+- Workflows: `permissions: contents: read`, `persist-credentials: false`, actions pinned to commit
+  SHAs (checkout `11d5960a…`, setup-node `49933ea5…`, both v4).
+- `supabase/schema.sql`: `evict_cache` ordering was inverted (it deleted the NEWEST permanent
+  rows); fixed, `revoke execute … from public, anon, authenticated` added, plus a pg_cron line.
+  **SQL in the repo does not apply itself** — it must be re-run in the Supabase SQL editor.
+- Size caps: zstd `maxOutputLength` 16 MB per archive chunk; CPC unzip inflates only the `.kml`.
+
+**Verified:** typecheck and `npm run build` clean; `next start` locally — `endYear=1e300` clamps and
+answers in 0.4 s with all 31 years; fractional years 400; outside Texas 422; 250-char search 400;
+buffer=2000 → 100; no `detail` in the ET response; headers present; 60 of 65 rapid calls pass then
+429; headless Chrome renders season, similar-years and trend panels with data.
+
+**Trap hit:** `npm audit fix --omit=dev` PRUNES devDependencies from node_modules — `tsc` vanished
+and `npm run typecheck` failed with "not recognized". `npm install` restores them.
+
 ## Next up
 
 Items 1, 4 and 7 of the original list are done (gridMET as a source, OpenET, shipped to Vercel).

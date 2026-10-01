@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { fetchNWSForecast } from "@/lib/sources/nws";
 import { fetchExtendedForecast } from "@/lib/sources/openmeteo";
 import { fetchAllOutlooks } from "@/lib/sources/cpc";
-import { validateLatLon } from "@/lib/geo";
+import { validateLatLon, snapToStep } from "@/lib/geo";
+import { requireTexas, enforceLimit, rejection, DEGRADED_CACHE } from "@/lib/api/guard";
 
 export const runtime = "nodejs";
 export const revalidate = 3600;
@@ -26,7 +27,18 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
 
   try {
-    const { lat, lon } = validateLatLon(url.searchParams.get("lat"), url.searchParams.get("lon"));
+    const raw = validateLatLon(url.searchParams.get("lat"), url.searchParams.get("lon"));
+    requireTexas(raw.lat, raw.lon);
+    enforceLimit(req, "forecast", 60);
+
+    /**
+     * Rounded to 0.01° (~1 km) before anything goes upstream. NWS forecasts on a
+     * 2.5 km grid and Open-Meteo coarser still, so this changes no number. But
+     * every distinct coordinate used to be a separate call to both, so a caller
+     * nudging the point by a millionth of a degree could spend the site's free
+     * NWS and Open-Meteo allowance one request at a time.
+     */
+    const { lat, lon } = snapToStep(raw.lat, raw.lon, 0.01);
 
     const [nws, extended, outlooks] = await Promise.allSettled([
       fetchNWSForecast(lat, lon),
@@ -69,10 +81,18 @@ export async function GET(req: Request) {
         },
       },
       {
-        headers: { "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=7200" },
+        headers: {
+          // A tier that failed is retried within a minute instead of being
+          // replayed from the CDN for an hour.
+          "Cache-Control": [nws, extended, outlooks].some((t) => t.status === "rejected")
+            ? DEGRADED_CACHE
+            : "public, s-maxage=3600, stale-while-revalidate=7200",
+        },
       }
     );
   } catch (e) {
+    const refused = rejection(e);
+    if (refused) return NextResponse.json({ error: refused.error }, { status: refused.status });
     const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: msg }, { status: 502 });
   }

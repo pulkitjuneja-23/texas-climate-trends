@@ -8,7 +8,13 @@ import {
 import { fetchReferenceEt, type DailyEto } from "@/lib/sources/gridmet";
 import { readMany, writeMany, cacheEnabled, type PutEntry } from "@/lib/cache/store";
 import { validateLatLon } from "@/lib/geo";
-import { HISTORY_START_YEAR } from "@/lib/sources/defaults";
+import {
+  requireTexas,
+  parseYears,
+  enforceLimit,
+  rejection,
+  DEGRADED_CACHE,
+} from "@/lib/api/guard";
 
 /**
  * Both water layers are Earth Engine calls, so both are cached.
@@ -41,7 +47,7 @@ export const revalidate = 86400;
 export const maxDuration = 60;
 
 /**
- * GET /api/et?lat=&lon=&startYear=&buffer=
+ * GET /api/et?lat=&lon=&startYear=&reference=1
  *
  * Two different answers to "how much water", deliberately kept apart:
  *
@@ -66,16 +72,24 @@ export async function GET(req: Request) {
 
   try {
     const { lat, lon } = validateLatLon(url.searchParams.get("lat"), url.searchParams.get("lon"));
+    requireTexas(lat, lon);
+    enforceLimit(req, "et", 60);
 
-    const bufferRaw = Number(url.searchParams.get("buffer"));
-    const bufferM =
-      Number.isFinite(bufferRaw) && bufferRaw >= 30 && bufferRaw <= 2000
-        ? bufferRaw
-        : DEFAULT_BUFFER_M;
+    // Fixed, not caller-chosen. The page never sends a buffer, and accepting up
+    // to 2 km let any caller ask Earth Engine for ~400x the default's work.
+    const bufferM = DEFAULT_BUFFER_M;
 
     const today = new Date().toISOString().slice(0, 10);
-    const startYear = Number(url.searchParams.get("startYear") ?? HISTORY_START_YEAR);
-    const refStart = `${Number.isFinite(startYear) ? startYear : HISTORY_START_YEAR}-01-01`;
+    const { startYear } = parseYears(
+      url.searchParams.get("startYear"),
+      null,
+      0,
+      Number(today.slice(0, 4))
+    );
+    // A whole, clamped year, so the cache key below always names the year the
+    // payload actually starts in. "1996.5" once mapped to 1996's key while
+    // fetching a series that began in 1997.
+    const refStart = `${startYear}-01-01`;
 
     /**
      * Reference ET is opt-in.
@@ -162,7 +176,7 @@ export async function GET(req: Request) {
           daily: [],
         };
 
-    const actual =
+    const loaded =
       actualSettled.status === "fulfilled"
         ? actualSettled.value
         : {
@@ -173,9 +187,19 @@ export async function GET(req: Request) {
 
     // Setup problems are far easier to diagnose from the terminal than from a
     // browser, and this only fires while Earth Engine is failing.
-    if (!actual.available && "detail" in actual && actual.detail) {
-      console.warn(`[api/et] OpenET unavailable: ${actual.reason} — ${actual.detail}`);
+    if (!loaded.available && "detail" in loaded && loaded.detail) {
+      console.warn(`[api/et] OpenET unavailable: ${loaded.reason} — ${loaded.detail}`);
     }
+
+    // `detail` is raw Earth Engine error text (project id, IAM role names,
+    // quota messages). lib/sources/openet.ts documents it as logs-only, so it
+    // stays in the log line above and never reaches the response.
+    const actual =
+      !loaded.available && "detail" in loaded
+        ? (({ detail: _detail, ...rest }) => rest)(loaded)
+        : loaded;
+
+    const degraded = !actual.available || (wantReference && !reference.available);
 
     return NextResponse.json(
       {
@@ -195,12 +219,17 @@ export async function GET(req: Request) {
       },
       {
         headers: {
-          "Cache-Control":
-            "public, max-age=0, must-revalidate, s-maxage=86400, stale-while-revalidate=604800",
+          // A day at the CDN only for a complete answer. A failed layer is held
+          // for a minute, as the Supabase write above already intended.
+          "Cache-Control": degraded
+            ? DEGRADED_CACHE
+            : "public, max-age=0, must-revalidate, s-maxage=86400, stale-while-revalidate=604800",
         },
       }
     );
   } catch (e) {
+    const refused = rejection(e);
+    if (refused) return NextResponse.json({ error: refused.error }, { status: refused.status });
     const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: msg }, { status: 502 });
   }

@@ -102,6 +102,12 @@ export async function fetchNWSForecast(
   if (!p?.forecast) {
     throw new Error("NWS did not return a forecast URL for this point (outside US coverage?)");
   }
+  // The second hop's URL comes from the first response, so it is pinned to
+  // the NWS host: a spoofed or altered reply must not be able to point this
+  // server's fetch anywhere else.
+  if (!p.forecast.startsWith("https://api.weather.gov/")) {
+    throw new Error("NWS returned an unexpected forecast address");
+  }
 
   const fc = await getJson<ForecastResponse>(p.forecast, signal);
   const periods = fc.properties?.periods ?? [];

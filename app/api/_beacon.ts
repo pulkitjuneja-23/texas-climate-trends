@@ -1,5 +1,24 @@
 import { NextResponse } from "next/server";
 import type { Envelope } from "@/lib/analytics/visits";
+import { overLimit, clientKey } from "@/lib/api/guard";
+
+/** A real beacon is a few hundred bytes; anything far larger is not one. */
+const MAX_BODY_BYTES = 4096;
+
+/**
+ * Whether to record this beacon at all.
+ *
+ * Without a ceiling, anyone could insert rows without limit: the analytics
+ * tables share one Supabase database (and its 500 MB quota) with the weather
+ * cache, and a flood could also push genuine visits past the /insights reader's
+ * row cap. The ceilings sit far above what one person's browsing produces; a
+ * beacon over them is dropped silently and the response is still 204.
+ */
+export function beaconAdmitted(req: Request, bucket: string, perMinute: number): boolean {
+  const length = Number(req.headers.get("content-length") ?? "0");
+  if (length > MAX_BODY_BYTES) return false;
+  return !overLimit(bucket, clientKey(req), perMinute);
+}
 
 /**
  * Shared behaviour for the two telemetry beacons.

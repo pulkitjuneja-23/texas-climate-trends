@@ -43,6 +43,39 @@ const nextConfig = {
       },
     ];
   },
+
+  /**
+   * Browser security headers, on every page and API response.
+   *
+   * - frame-ancestors 'none' / X-Frame-Options DENY: no other site may show this
+   *   one inside a frame, so it cannot be dressed up as part of someone else's
+   *   page.
+   * - Referrer-Policy: when a visitor follows a link off the site, the other
+   *   site learns only "farmwth.com", never the full address with its lat/lon.
+   *   The insights page sends no referrer at all, because its address holds the
+   *   key.
+   * - nosniff: the browser treats each response as the type it is labelled.
+   *
+   * When two rules set the same header, the later one wins, so /insights comes
+   * after the general rule.
+   */
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+        ],
+      },
+      {
+        source: "/insights",
+        headers: [{ key: "Referrer-Policy", value: "no-referrer" }],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

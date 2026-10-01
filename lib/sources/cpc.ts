@@ -169,7 +169,11 @@ export async function fetchOutlook(
   if (!res.ok) throw new Error(`CPC ${product} returned ${res.status} ${res.statusText}`);
 
   const buf = new Uint8Array(await res.arrayBuffer());
-  const files = unzipSync(buf);
+  // Inflate only the .kml, and only if its declared size is sane (a real one is
+  // well under 5 MB), so a damaged or altered download cannot balloon in memory.
+  const files = unzipSync(buf, {
+    filter: (f) => f.name.toLowerCase().endsWith(".kml") && f.originalSize <= 20 * 1024 * 1024,
+  });
   const kmlName = Object.keys(files).find((n) => n.toLowerCase().endsWith(".kml"));
   if (!kmlName) throw new Error(`CPC ${product}: no .kml inside .kmz`);
 

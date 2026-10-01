@@ -39,6 +39,8 @@ const MANIFEST_TTL_MS = 10 * 60 * 1000;
 /** How soon to look again while a rebuild has the archive switched off. */
 const BUILDING_RECHECK_MS = 60 * 1000;
 const FETCH_TIMEOUT_MS = 8000;
+/** Ceiling on one decompressed chunk; real chunks are under 1 MB. */
+const MAX_CHUNK_BYTES = 16 * 1024 * 1024;
 
 let manifestCache: { at: number; value: Manifest | null } | null = null;
 
@@ -141,7 +143,11 @@ async function readPart(
       )) as Buffer | null;
       if (!raw) return null;
       try {
-        const flat = zstdDecompressSync(raw);
+        // A real chunk inflates to well under 1 MB (largest: 16x16 cells x ~13
+        // months, or 4x4 cells x ~32 years, at 2 bytes each). The cap means a
+        // corrupted or tampered object cannot balloon in the request path; one
+        // that exceeds it throws, and the reader declines as for any bad chunk.
+        const flat = zstdDecompressSync(raw, { maxOutputLength: MAX_CHUNK_BYTES });
         const chunk = new Int16Array(flat.buffer, flat.byteOffset, flat.byteLength / 2);
         return { key, series: extractSeries(part, chunk, pos, nDays) };
       } catch (e) {

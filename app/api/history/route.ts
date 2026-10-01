@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { getSource, DEFAULT_SOURCE_ID, listSources } from "@/lib/sources/registry";
-import { HISTORY_START_YEAR } from "@/lib/sources/defaults";
 import {
   findNearestStation,
   fetchStationDaily,
@@ -8,6 +7,13 @@ import {
 } from "@/lib/sources/stations";
 import { readSeries, writeSeries, fetchSpan, cacheEnabled } from "@/lib/cache/series";
 import { validateLatLon, snapToCell, snapToStep } from "@/lib/geo";
+import {
+  requireTexas,
+  parseYears,
+  enforceLimit,
+  rejection,
+  DEGRADED_CACHE,
+} from "@/lib/api/guard";
 import type { DailyRecord, TaggedRecord } from "@/lib/types";
 
 /**
@@ -139,24 +145,23 @@ export async function GET(req: Request) {
 
   try {
     const { lat, lon } = validateLatLon(url.searchParams.get("lat"), url.searchParams.get("lon"));
+    requireTexas(lat, lon);
+    enforceLimit(req, "history", 60);
 
     const sourceId = url.searchParams.get("source") ?? DEFAULT_SOURCE_ID;
     const source = getSource(sourceId);
 
     const today = todayISO();
     const currentYear = Number(today.slice(0, 4));
-    const startYear = Number(url.searchParams.get("startYear") ?? HISTORY_START_YEAR);
-    const endYear = Number(url.searchParams.get("endYear") ?? currentYear);
-
-    if (!Number.isFinite(startYear) || !Number.isFinite(endYear) || startYear > endYear) {
-      return NextResponse.json({ error: "Invalid startYear/endYear" }, { status: 400 });
-    }
-    if (startYear < source.meta.startYear) {
-      return NextResponse.json(
-        { error: `${source.meta.name} starts in ${source.meta.startYear}` },
-        { status: 400 }
-      );
-    }
+    // Whole years from HISTORY_START_YEAR (or the source's own start, if later)
+    // to this year. Unbounded, endYear=1e300 looped until the function ran out
+    // of memory; before 1995 the request bypassed the R2 archive for Earth Engine.
+    const { startYear, endYear } = parseYears(
+      url.searchParams.get("startYear"),
+      url.searchParams.get("endYear"),
+      source.meta.startYear,
+      currentYear
+    );
 
     const start = `${startYear}-01-01`;
     const end = endYear >= currentYear ? today : `${endYear}-12-31`;
@@ -439,13 +444,18 @@ export async function GET(req: Request) {
         headers: {
           // max-age=0 makes the BROWSER revalidate every time, so flipping
           // between sources always reflects a real answer, while s-maxage keeps
-          // the expensive upstream work cached at the CDN.
+          // the expensive upstream work cached at the CDN. A partial answer
+          // (upstream failed, cached years only) is held for a minute, not hours.
           "Cache-Control":
-            "public, max-age=0, must-revalidate, s-maxage=10800, stale-while-revalidate=86400",
+            primarySettled.status === "rejected"
+              ? DEGRADED_CACHE
+              : "public, max-age=0, must-revalidate, s-maxage=10800, stale-while-revalidate=86400",
         },
       }
     );
   } catch (e) {
+    const refused = rejection(e);
+    if (refused) return NextResponse.json({ error: refused.error }, { status: refused.status });
     const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: msg }, { status: 502 });
   }

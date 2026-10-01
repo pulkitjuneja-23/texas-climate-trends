@@ -225,7 +225,9 @@ For the second one: open `earthengine-key.json` in Notepad, select all (Ctrl+A),
 and paste the whole thing into the value box. It is a long block of text starting with `{` and
 ending with `}`. Paste all of it.
 
-4. Tick all three environments (Production, Preview, Development).
+4. Tick **Production only**. Leave Preview and Development unticked: a preview build can be made
+   from any branch, and once the repository is public, from someone else's pull request. Production
+   keys must never be inside a build you did not make yourself.
 5. **Redeploy** — Vercel only picks up new settings on the next deploy. Either run
    `npx vercel --prod` again, or use **Deployments → ⋯ → Redeploy** in the dashboard.
 

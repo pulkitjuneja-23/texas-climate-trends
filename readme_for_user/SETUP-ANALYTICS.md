@@ -149,7 +149,7 @@ returns an ordinary "not found", exactly as if it did not exist.
    |---|---|
    | `INSIGHTS_KEY` | a long random string — treat it like a password |
 
-4. Tick all three environments (Production, Preview, Development)
+4. Tick **Production only** (a preview build should never hold the key; see DEPLOY.md)
 5. **Redeploy** — Vercel only picks up new settings on the next deploy.
    **Deployments → ⋯ → Redeploy** is the quickest way.
 

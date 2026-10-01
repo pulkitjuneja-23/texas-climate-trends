@@ -182,7 +182,9 @@ git init && git add -A && git commit -m "Texas Climate Trends"
 # push to GitHub, then import the repo at vercel.com/new
 ```
 
-No environment variables to configure. API routes cache upstream responses
+The basic site needs no environment variables. The optional services (Earth Engine water data,
+the Supabase cache and visit log, the R2 archive, the private insights page) each need a few; see
+`readme_for_user/`, and add every secret one to Vercel's **Production** environment only. API routes cache upstream responses
 (`s-maxage=10800` for history, `3600` for forecast), so repeat visits to the same point are served
 from Vercel's data cache rather than re-hitting NASA.
 

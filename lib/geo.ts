@@ -143,6 +143,11 @@ export function snapToStep(lat: number, lon: number, step: number | undefined): 
 }
 
 export function validateLatLon(latRaw: string | null, lonRaw: string | null): LatLon {
+  // Number(null) and Number("") are both 0, which once turned a request with no
+  // coordinates into a valid-looking request for 0°, 0° in the Gulf of Guinea.
+  if (!latRaw?.trim() || !lonRaw?.trim()) {
+    throw new Error("lat and lon are required and must be numbers");
+  }
   const lat = Number(latRaw);
   const lon = Number(lonRaw);
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) {

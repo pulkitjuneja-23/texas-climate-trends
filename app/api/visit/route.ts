@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { readCountyOnly } from "@/lib/yield/read";
 import { logVisit } from "@/lib/analytics/visits";
 import { validateLatLon } from "@/lib/geo";
-import { envelopeFrom, beaconOk } from "../_beacon";
+import { envelopeFrom, beaconOk, beaconAdmitted } from "../_beacon";
 
 /**
  * POST /api/visit — record that someone looked at a location.
@@ -30,6 +30,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
+  if (!beaconAdmitted(req, "visit", 30)) return beaconOk();
   try {
     const body = (await req.json()) as Record<string, unknown>;
 

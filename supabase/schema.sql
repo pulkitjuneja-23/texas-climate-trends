@@ -79,12 +79,17 @@ begin
    where expires_at is not null and expires_at <= now();
   get diagnostics n_expired = row_count;
 
-  -- Oldest-written first. Immutable rows are preferred for keeping, since
-  -- refetching one costs a full upstream call.
+  -- KEEP the first max_rows in this order — immutable rows first (refetching
+  -- one costs a full upstream call), newest first within each — and delete
+  -- the rest, i.e. the oldest-written rows, mutable ones first.
+  --
+  -- Until 2026-10-01 this read `order by immutable asc, fetched_at asc`, which
+  -- kept the rows listed FIRST and so deleted the newest immutable rows — the
+  -- opposite of what the comment above it promised.
   delete from cache_entries
    where key in (
      select key from cache_entries
-      order by immutable asc, fetched_at asc
+      order by immutable desc, fetched_at desc
       offset max_rows
    );
   get diagnostics n_overflow = row_count;
@@ -92,6 +97,19 @@ begin
   return query select n_expired, n_overflow;
 end;
 $$;
+
+-- Postgres lets every role execute a new function by default, which exposes it
+-- through Supabase's public /rpc endpoint. RLS already makes it a no-op for
+-- those roles, but nobody except the owner has any reason to call it.
+revoke execute on function evict_cache(int) from public, anon, authenticated;
+
+-- Run it automatically, nightly at 08:15 UTC. Enable "pg_cron" first under
+-- Database -> Extensions, then run this once. Without a schedule, rows the
+-- site writes for every newly visited location only ever accumulate.
+--
+--   select cron.schedule('evict-cache-nightly', '15 8 * * *', $$select evict_cache()$$);
+--
+-- Check it is scheduled:  select jobname, schedule from cron.job;
 
 -- Handy checks:
 --   select pg_size_pretty(pg_total_relation_size('cache_entries'));

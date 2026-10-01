@@ -31,8 +31,37 @@ export interface CsvColumn<T> {
  */
 function cell(v: CsvValue): string {
   if (v === null || v === undefined) return "";
-  const s = String(v);
+  const s = typeof v === "number" ? String(v) : defuse(String(v));
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/**
+ * Stop a text cell being read as a spreadsheet formula.
+ *
+ * Excel and LibreOffice treat a cell starting with = + - @ (or a tab or CR) as
+ * a formula. A leading apostrophe makes it plain text, which is OWASP's
+ * standard defence. Numbers, including negative ones such as "-3.2", are left
+ * alone so they stay numbers in the spreadsheet.
+ */
+const FORMULA_START = /^[=+\-@\t\r]/;
+const PLAIN_NUMBER = /^-?\d+(\.\d+)?$/;
+function defuse(s: string): string {
+  return FORMULA_START.test(s) && !PLAIN_NUMBER.test(s) ? `'${s}` : s;
+}
+
+/**
+ * One `#` provenance line, made safe.
+ *
+ * These lines carry text the reader may not have typed — the place label comes
+ * from the page address, so a crafted link could set it. Unescaped, a line
+ * break forged whole rows (a fake "Data source:" line) and a comma could start
+ * a new cell holding a formula. Control characters become spaces, double
+ * quotes become single, and a cell that would start a formula after a comma is
+ * defused. Kept as a `#` line rather than quoted, so R and pandas still skip it.
+ */
+function metaLine(m: string): string {
+  const flat = m.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/"/g, "'");
+  return `# ${flat.replace(/,(\s*)(?=[=+@]|-(?![\d.]))/g, ",$1'")}`;
 }
 
 export function buildCsv<T>(
@@ -40,7 +69,7 @@ export function buildCsv<T>(
   columns: Array<CsvColumn<T>>,
   meta: string[] = []
 ): string {
-  const lines: string[] = meta.map((m) => `# ${m}`);
+  const lines: string[] = meta.map(metaLine);
   lines.push(columns.map((c) => cell(c.header)).join(","));
   for (const r of rows) {
     lines.push(columns.map((c) => cell(c.value(r))).join(","));
