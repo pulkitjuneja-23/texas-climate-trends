@@ -126,6 +126,21 @@ export const LIMITS = {
   event: 1200,
 } as const;
 
+/**
+ * The 429 response for a caller over the limit, or null to carry on.
+ *
+ * Runs at the top of a route, BEFORE `collapsed()`, so every caller is counted
+ * even when identical requests then share one answer.
+ */
+export function tooMany(
+  req: Request,
+  bucket: string,
+  body: Record<string, unknown> = { error: "Too many requests. Please wait a minute and try again." }
+): Response | null {
+  if (!overLimit(bucket, clientKey(req), LIMITS.data)) return null;
+  return Response.json(body, { status: 429, headers: { "Cache-Control": "no-store" } });
+}
+
 /** Throws a 429 when the caller is over the limit for this bucket. */
 export function enforceLimit(req: Request, bucket: string, max: number): void {
   if (overLimit(bucket, clientKey(req), max)) {

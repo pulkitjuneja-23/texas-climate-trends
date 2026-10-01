@@ -7,14 +7,8 @@ import {
 } from "@/lib/sources/stations";
 import { readSeries, writeSeries, fetchSpan, cacheEnabled } from "@/lib/cache/series";
 import { validateLatLon, snapToCell, snapToStep } from "@/lib/geo";
-import {
-  requireTexas,
-  parseYears,
-  enforceLimit,
-  rejection,
-  DEGRADED_CACHE,
-  LIMITS,
-} from "@/lib/api/guard";
+import { requireTexas, parseYears, tooMany, rejection, DEGRADED_CACHE } from "@/lib/api/guard";
+import { shared, collapsed } from "@/lib/api/shared";
 import type { DailyRecord, TaggedRecord } from "@/lib/types";
 
 /**
@@ -142,12 +136,16 @@ function gaugeLooksDead(
 }
 
 export async function GET(req: Request) {
+  // Counted per caller first; then identical simultaneous requests share one answer.
+  return tooMany(req, "history") ?? collapsed(req, handle);
+}
+
+async function handle(req: Request): Promise<Response> {
   const url = new URL(req.url);
 
   try {
     const { lat, lon } = validateLatLon(url.searchParams.get("lat"), url.searchParams.get("lon"));
     requireTexas(lat, lon);
-    enforceLimit(req, "history", LIMITS.data);
 
     const sourceId = url.searchParams.get("source") ?? DEFAULT_SOURCE_ID;
     const source = getSource(sourceId);
@@ -230,7 +228,9 @@ export async function GET(req: Request) {
       try {
         const st = await findNearestStation(stationPoint.lat, stationPoint.lon, undefined);
         if (!st) return { skipped: false, station: null, rows: [], error: null };
-        const rows = await fetchStationDaily(st.id, st.network, fillStart, today);
+        const rows = await shared(`station:${st.id}:${fillStart}:${today}`, () =>
+          fetchStationDaily(st.id, st.network, fillStart, today)
+        );
         return { skipped: false, station: st, rows, error: null };
       } catch (e) {
         return {
@@ -257,14 +257,18 @@ export async function GET(req: Request) {
     const cached = await readSeries(sourceId, snapped.lat, snapped.lon, startYear, endYear);
     const span = fetchSpan(cached.missing, start, end);
 
+    // Shared, so a crowd arriving at one cell while its cached answer is cold
+    // costs one upstream fetch per instance, not one each.
     const primarySettled = await Promise.allSettled([
       span
-        ? source.fetchDaily({
-            lat: snapped.lat,
-            lon: snapped.lon,
-            start: span.start,
-            end: span.end,
-          })
+        ? shared(`hist:${sourceId}:${snapped.lat},${snapped.lon}:${span.start}:${span.end}`, () =>
+            source.fetchDaily({
+              lat: snapped.lat,
+              lon: snapped.lon,
+              start: span.start,
+              end: span.end,
+            })
+          )
         : Promise.resolve([] as DailyRecord[]),
     ]).then((r) => r[0]);
 

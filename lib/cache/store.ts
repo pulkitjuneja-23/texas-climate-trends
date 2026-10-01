@@ -42,6 +42,31 @@ const TABLE = "cache_entries";
 const READ_TIMEOUT_MS = 2500;
 const WRITE_TIMEOUT_MS = 6000;
 
+/**
+ * CIRCUIT BREAKER. After Supabase times out or fails on its side, this instance
+ * stops calling it for a minute and goes straight to the upstream (the R2
+ * archive is ~1.6 s).
+ *
+ * Without it, every request during a Supabase slowdown waited out the 2.5 s
+ * read deadline AND up to 6 s on a write that was never going to land — about
+ * 10 s per history request instead of ~2 — and all those extra writes landed
+ * on a database that was already struggling. Seen on 2026-10-01 during a
+ * Supabase regional latency incident (worsened by a local 300-visitor burst
+ * test that read and rewrote 31 years per request against the real database).
+ *
+ * A failure on OUR side (a 4xx: bad key, missing table) does not trip it;
+ * pausing would only hide a configuration fault that needs fixing.
+ */
+const PAUSE_MS = 60_000;
+let pausedUntil = 0;
+
+function pause(what: string): void {
+  if (Date.now() >= pausedUntil) {
+    console.warn(`[cache] ${what} failed on Supabase's side; skipping the cache for ${PAUSE_MS / 1000} s`);
+  }
+  pausedUntil = Date.now() + PAUSE_MS;
+}
+
 export interface CacheEntry<T> {
   key: string;
   payload: T;
@@ -99,6 +124,7 @@ async function call(
   timeoutMs: number,
   what: string
 ): Promise<Response | null> {
+  if (Date.now() < pausedUntil) return null; // breaker open: behave as a miss
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -111,6 +137,7 @@ async function call(
     if (!res.ok) {
       const body = await res.text().catch(() => "");
       console.warn(`[cache] ${what} failed ${res.status}: ${body.slice(0, 200)}`);
+      if (res.status >= 500 || res.status === 429) pause(what);
       return null;
     }
     return res;
@@ -120,6 +147,7 @@ async function call(
     // that times out on every read is invisible otherwise: the site just runs
     // at uncached speed while appearing to have a cache.
     console.warn(`[cache] ${what} ${ctrl.signal.aborted ? "timed out" : "errored"}: ${why}`);
+    pause(what);
     return null;
   } finally {
     clearTimeout(timer);

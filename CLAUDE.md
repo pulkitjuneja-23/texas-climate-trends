@@ -2372,6 +2372,36 @@ buffer=2000 → 100; no `detail` in the ET response; headers present; 60 of 65 r
 **Trap hit:** `npm audit fix --omit=dev` PRUNES devDependencies from node_modules — `tsc` vanished
 and `npm run typecheck` failed with "not recognized". `npm install` restores them.
 
+#### Same day — built to hold up under a crowd (`lib/api/shared.ts`, store.ts breaker)
+
+The user's bar: 1,000 people on one university Wi-Fi must not be slowed or blocked. Three changes,
+each found by a burst test (300 simultaneous visitors at one place, each loading history, forecast,
+ET and yield = 1,200 requests, against a LOCAL `next start` with no CDN — the worst case):
+
+- **`shared(key, work)`** — simultaneous identical upstream fetches (history span, station top-up,
+  OpenET, reference ET, NWS, Open-Meteo, CPC) share one promise per instance.
+- **`collapsed(req, handler)`** — identical simultaneous REQUESTS (same path + sorted query) share
+  one finished response; each caller gets its own copy. Sharing only the fetch was not enough: each
+  request still read 31 years from Supabase and built its own ~1.3 MB answer. Burst went
+  **46.6 s → 11.7 s**; forecast/yield median 10-13 s → 2 s. The rate limit (`tooMany`) runs
+  BEFORE `collapsed`, or a whole group would be counted as one caller.
+- **Supabase circuit breaker** in `lib/cache/store.ts`: after a timeout, 5xx or 429, that instance
+  skips the cache for 60 s and goes straight to R2. During a Supabase stall every history request
+  had waited the 2.5 s read deadline plus up to 6 s on a doomed write: ~10 s on the LIVE site
+  (measured). With the breaker: 2.9 s for the request that trips it, then 0.3-0.5 s. A 4xx (our
+  config) does NOT trip it — that would hide a fault that needs fixing.
+- The page now requests the forecast at 0.01° (what the server rounds to anyway), so neighbours
+  share one CDN entry. Verified the live CDN: identical history request MISS 1.6 s, then HIT 0.24 s.
+
+**DO NOT LOAD-TEST AGAINST THE REAL SUPABASE.** `next start` loads `.env.local`, i.e. the
+production database. The first burst sent 300 simultaneous 31-year reads and rewrites to the free
+tier, during a Supabase "Eastern US latency" incident that had begun the day before; afterwards
+even a one-row read timed out for 5+ minutes. Which caused what cannot be separated. Run load tests
+with the cache off: `SUPABASE_URL= SUPABASE_SERVICE_KEY= npm run start` (an empty value counts as
+set, so `.env.local` does not override it; `cache.enabled` reads false). Also: a Windows laptop
+playing both 300 clients and the server runs out of sockets (~4,600 left in TIME_WAIT after a few
+runs) and reports connection errors that are the test rig's, not the site's.
+
 ## Next up
 
 Items 1, 4 and 7 of the original list are done (gridMET as a source, OpenET, shipped to Vercel).

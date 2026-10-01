@@ -8,14 +8,8 @@ import {
 import { fetchReferenceEt, type DailyEto } from "@/lib/sources/gridmet";
 import { readMany, writeMany, cacheEnabled, type PutEntry } from "@/lib/cache/store";
 import { validateLatLon } from "@/lib/geo";
-import {
-  requireTexas,
-  parseYears,
-  enforceLimit,
-  rejection,
-  DEGRADED_CACHE,
-  LIMITS,
-} from "@/lib/api/guard";
+import { requireTexas, parseYears, tooMany, rejection, DEGRADED_CACHE } from "@/lib/api/guard";
+import { shared, collapsed } from "@/lib/api/shared";
 
 /**
  * Both water layers are Earth Engine calls, so both are cached.
@@ -69,12 +63,16 @@ export const maxDuration = 60;
  */
 
 export async function GET(req: Request) {
+  // Counted per caller first; then identical simultaneous requests share one answer.
+  return tooMany(req, "et") ?? collapsed(req, handle);
+}
+
+async function handle(req: Request): Promise<Response> {
   const url = new URL(req.url);
 
   try {
     const { lat, lon } = validateLatLon(url.searchParams.get("lat"), url.searchParams.get("lon"));
     requireTexas(lat, lon);
-    enforceLimit(req, "et", LIMITS.data);
 
     // Fixed, not caller-chosen. The page never sends a buffer, and accepting up
     // to 2 km let any caller ask Earth Engine for ~400x the default's work.
@@ -118,14 +116,18 @@ export async function GET(req: Request) {
     // Independent failure: a missing Earth Engine key must not take reference
     // ET down with it, and one layer failing must not hide the other.
     const [refSettled, actualSettled] = await Promise.allSettled([
+      // Shared by key, so a crowd at one field costs Earth Engine one call per
+      // instance while the cached answer is cold.
       !wantReference
         ? Promise.resolve(null)
         : refHit
         ? Promise.resolve(refHit.payload)
-        : fetchReferenceEt({ lat, lon, start: refStart, end: today }),
+        : shared(refKey, () => fetchReferenceEt({ lat, lon, start: refStart, end: today })),
       actualHit
         ? Promise.resolve(actualHit.payload)
-        : fetchMonthlyEt({ lat, lon }, { bufferM, start: OPENET_START, end: today }),
+        : shared(actualKey, () =>
+            fetchMonthlyEt({ lat, lon }, { bufferM, start: OPENET_START, end: today })
+          ),
     ]);
 
     /**

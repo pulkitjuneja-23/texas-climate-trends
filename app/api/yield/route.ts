@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { validateLatLon, inTexas } from "@/lib/geo";
 import { readCountyYields, yieldEnabled } from "@/lib/yield/read";
-import { overLimit, clientKey, DEGRADED_CACHE, LIMITS } from "@/lib/api/guard";
+import { tooMany, DEGRADED_CACHE } from "@/lib/api/guard";
+import { collapsed } from "@/lib/api/shared";
 
 /**
  * GET /api/yield?lat=&lon=
@@ -23,17 +24,20 @@ export const runtime = "nodejs";
 export const revalidate = 3600;
 
 export async function GET(req: Request) {
+  // Counted per caller first; then identical simultaneous requests share one answer.
+  return (
+    tooMany(req, "yield", {
+      available: false,
+      reason: "Too many requests. Please wait a minute.",
+    }) ?? collapsed(req, handle)
+  );
+}
+
+async function handle(req: Request): Promise<Response> {
   const url = new URL(req.url);
 
   try {
     const { lat, lon } = validateLatLon(url.searchParams.get("lat"), url.searchParams.get("lon"));
-
-    if (overLimit("yield", clientKey(req), LIMITS.data)) {
-      return NextResponse.json(
-        { available: false, reason: "Too many requests. Please wait a minute." },
-        { status: 429 }
-      );
-    }
 
     if (!yieldEnabled) {
       return NextResponse.json(

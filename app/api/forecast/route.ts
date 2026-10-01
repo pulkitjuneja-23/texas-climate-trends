@@ -3,7 +3,8 @@ import { fetchNWSForecast } from "@/lib/sources/nws";
 import { fetchExtendedForecast } from "@/lib/sources/openmeteo";
 import { fetchAllOutlooks } from "@/lib/sources/cpc";
 import { validateLatLon, snapToStep } from "@/lib/geo";
-import { requireTexas, enforceLimit, rejection, DEGRADED_CACHE, LIMITS } from "@/lib/api/guard";
+import { requireTexas, tooMany, rejection, DEGRADED_CACHE } from "@/lib/api/guard";
+import { shared, collapsed } from "@/lib/api/shared";
 
 export const runtime = "nodejs";
 export const revalidate = 3600;
@@ -24,12 +25,16 @@ export const revalidate = 3600;
  */
 
 export async function GET(req: Request) {
+  // Counted per caller first; then identical simultaneous requests share one answer.
+  return tooMany(req, "forecast") ?? collapsed(req, handle);
+}
+
+async function handle(req: Request): Promise<Response> {
   const url = new URL(req.url);
 
   try {
     const raw = validateLatLon(url.searchParams.get("lat"), url.searchParams.get("lon"));
     requireTexas(raw.lat, raw.lon);
-    enforceLimit(req, "forecast", LIMITS.data);
 
     /**
      * Rounded to 0.01° (~1 km) before anything goes upstream. NWS forecasts on a
@@ -40,10 +45,13 @@ export async function GET(req: Request) {
      */
     const { lat, lon } = snapToStep(raw.lat, raw.lon, 0.01);
 
+    // Shared by rounded point, so simultaneous visitors near one spot cost the
+    // weather services one call per instance, not one each.
+    const at = `${lat},${lon}`;
     const [nws, extended, outlooks] = await Promise.allSettled([
-      fetchNWSForecast(lat, lon),
-      fetchExtendedForecast(lat, lon, 16),
-      fetchAllOutlooks(lat, lon),
+      shared(`nws:${at}`, () => fetchNWSForecast(lat, lon)),
+      shared(`om:${at}`, () => fetchExtendedForecast(lat, lon, 16)),
+      shared(`cpc:${at}`, () => fetchAllOutlooks(lat, lon)),
     ]);
 
     return NextResponse.json(

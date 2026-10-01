@@ -414,7 +414,11 @@ export default function Page() {
     const ctrl = new AbortController();
     setFcLoading(true);
 
-    fetch(`/api/forecast?lat=${place.lat}&lon=${place.lon}`, { signal: ctrl.signal })
+    // Rounded to the same ~1 km the server uses, so the answer is identical but
+    // neighbours share one cached copy at Vercel's CDN instead of each missing it.
+    fetch(`/api/forecast?lat=${place.lat.toFixed(2)}&lon=${place.lon.toFixed(2)}`, {
+      signal: ctrl.signal,
+    })
       .then((r) => r.json())
       .then((json) => setForecast(json as ForecastPayload))
       .catch(() => setForecast(null))
