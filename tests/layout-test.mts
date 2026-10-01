@@ -6,7 +6,7 @@
  * That is the failure this project can least afford, so the arithmetic gets
  * checked directly.
  *
- * Run: node --experimental-strip-types scripts/layout-test.mts
+ * Run all tests: npm test
  */
 import {
   locate,

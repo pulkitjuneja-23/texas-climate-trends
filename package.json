@@ -2,13 +2,14 @@
   "name": "texas-climate-trends",
   "version": "0.1.0",
   "private": true,
-  "description": "Farmer-facing historical climate trends for Texas — 30-year normals, individual years, forecast, and analog-year matching.",
+  "description": "Texas Weather Explorer: 30 years of daily weather history for any point in Texas, for growers.",
+  "license": "MIT",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --no-warnings tests/cache-logic-test.mts && node --experimental-strip-types --no-warnings tests/encode-roundtrip-test.mts && node --experimental-strip-types --no-warnings tests/layout-test.mts && node --experimental-strip-types --no-warnings tests/test-coords.mts",
     "archive:refresh": "node --experimental-strip-types scripts/ingest-gridmet.mts --r2 --part current",
     "archive:rebuild": "node --experimental-strip-types scripts/ingest-gridmet.mts --r2"
   },

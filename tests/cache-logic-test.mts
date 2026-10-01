@@ -5,7 +5,7 @@
  * mistake here is expensive in exactly the way this whole exercise is meant to
  * fix — e.g. a revisit that re-fetches 27 years instead of one.
  *
- * Run: node --experimental-strip-types scripts/cache-logic-test.mts
+ * Run all tests: npm test
  */
 import { fetchSpan } from "../lib/cache/span.ts";
 

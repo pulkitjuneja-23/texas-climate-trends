@@ -1,4 +1,4 @@
--- Texas Climate Trends — cache table
+-- Texas Weather Explorer: weather cache table
 --
 -- Run this once in the Supabase SQL editor (Dashboard -> SQL Editor -> New query).
 -- Safe to re-run: everything is guarded with "if not exists".

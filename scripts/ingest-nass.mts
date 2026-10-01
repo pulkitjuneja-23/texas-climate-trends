@@ -110,7 +110,9 @@ let r2: R2Config | null = null;
 if (TO_R2) {
   r2 = r2ConfigFromEnv(env);
   if (!r2) {
-    console.error("R2 credentials missing — see readme_for_user/SETUP-R2.md");
+    console.error(
+      "R2 credentials missing. Needs R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_BUCKET."
+    );
     process.exit(1);
   }
 }

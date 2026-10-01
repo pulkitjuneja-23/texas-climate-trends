@@ -158,7 +158,7 @@ if (TO_R2) {
   if (!r2) {
     console.error(
       "R2 credentials missing. Needs R2_ACCOUNT_ID, R2_ACCESS_KEY_ID,\n" +
-        "R2_SECRET_ACCESS_KEY and R2_BUCKET in .env.local — see readme_for_user/SETUP-R2.md"
+        "R2_SECRET_ACCESS_KEY and R2_BUCKET in .env.local or the environment."
     );
     process.exit(1);
   }

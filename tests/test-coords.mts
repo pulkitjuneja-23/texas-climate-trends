@@ -6,7 +6,7 @@
  * and degrees-with-decimal-minutes parsed as a latitude and a longitude. Both
  * returned a confident wrong place instead of refusing.
  *
- *   node --experimental-strip-types scripts/test-coords.mts
+ * Run all tests: npm test
  */
 import { parseCoords } from "../lib/geo.ts";
 

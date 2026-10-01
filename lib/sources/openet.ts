@@ -9,7 +9,7 @@ import { getEe } from "./earthengine";
  * Going through EE removes the REST API's hard cap (400 queries/month on the
  * Earth-Engine-linked tier) — EE meters compute, not request counts. The REST
  * key stays as a fallback path if this ever has to move to a commercial
- * licence; see readme_for_user/SETUP-EARTHENGINE.md.
+ * licence.
  *
  * WHAT THE DATA IS
  *   collection : projects/openet/assets/ensemble/conus/gridmet/monthly/v2_1
@@ -90,10 +90,12 @@ export async function fetchMonthlyEt(
 
   const conn = await getEe();
   if (!conn.ee) {
+    // The connection error is setup detail (keys, IAM roles) that a grower can
+    // do nothing with, so visitors get a plain reason and the log gets the rest.
     return {
       available: false,
-      reason: conn.error ?? "Earth Engine unavailable.",
-      detail: conn.detail,
+      reason: "Water-use data is temporarily unavailable.",
+      detail: [conn.error, conn.detail].filter(Boolean).join(" | "),
     };
   }
   const ee = conn.ee;

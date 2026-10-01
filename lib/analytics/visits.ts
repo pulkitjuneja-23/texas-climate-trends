@@ -173,8 +173,7 @@ async function insert(table: string, body: unknown, legacy?: unknown): Promise<v
       if (retry.ok) {
         console.warn(
           `[visits] ${table}: the database is missing the newer columns, so this row was ` +
-            `written without them. Run the second SQL block in ` +
-            `readme_for_user/SETUP-ANALYTICS.md.`
+            `written without them. Run supabase/analytics.sql in the Supabase SQL editor.`
         );
         return;
       }

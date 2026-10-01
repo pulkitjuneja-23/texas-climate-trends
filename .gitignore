@@ -33,4 +33,6 @@ next-env.d.ts
 *.tmp
 *.~*
 
-.vercel
+# Local working notes for the coding assistant; not part of the product.
+CLAUDE.md
+.claude/

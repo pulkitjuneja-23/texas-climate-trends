@@ -79,7 +79,7 @@ export function clientKey(req: Request): string {
  * HONEST LIMIT: Vercel runs several instances, each with its own counters, and
  * a cold instance starts at zero. So this caps one script hammering one
  * instance; it is not a global guarantee. The global control is a rate-limit
- * rule in the Vercel Firewall (see readme_for_user/DEPLOY.md). The ceilings are
+ * rule in the Vercel Firewall. The ceilings are
  * set well above anything a person clicking around the map produces.
  */
 const windows = new Map<string, { start: number; count: number }>();

@@ -978,7 +978,7 @@ export default function Page() {
         reason:
           water?.actualEt && !water.actualEt.available
             ? water.actualEt.reason
-            : "Earth Engine is not connected yet — see readme_for_user/SETUP-EARTHENGINE.md.",
+            : "Water-use data is temporarily unavailable.",
         missingMonths: missingEtMonths,
       }}
     />
@@ -1044,8 +1044,8 @@ export default function Page() {
         A cotton harvester cutting rows at Batesville, Texas. USDA, public
         domain — no attribution is legally required and none is printed, which
         is why the credit line that used to sit in the corner is gone. The
-        provenance lives in public/img/CREDITS.md, where it belongs: a caption
-        on a decorative photograph is furniture, not information.
+        README credits the landscape photographs; a caption on a decorative
+        photograph is furniture, not information.
       */}
       <header className="hero">
         <div className="hero-photo" aria-hidden="true" />
@@ -1516,10 +1516,8 @@ export default function Page() {
           <details className="fold">
             <summary>About us</summary>
             {/*
-              Photos: Pulkit's from his own site, the others from their Texas
-              A&M profile pages — each cropped to the face and reduced to a
-              192 px square (~7 KB) so the footer stays light. Sources are in
-              public/img/CREDITS.md.
+              Photos supplied by the authors, each cropped to the face and
+              reduced to a 192 px square (~7 KB) so the footer stays light.
             */}
             <ul className="people">
               <li>

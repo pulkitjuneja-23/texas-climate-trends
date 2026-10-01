@@ -6,7 +6,7 @@
  * failure mode this project has, so the encoding gets checked rather than
  * trusted.
  *
- * Run: node --experimental-strip-types scripts/encode-roundtrip-test.mts
+ * Run all tests: npm test
  */
 import { encodeYear, decodeYear } from "../lib/cache/encode.ts";
 

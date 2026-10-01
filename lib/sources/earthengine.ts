@@ -65,7 +65,7 @@ export async function getEe(): Promise<EeConnection | EeFailure> {
     return {
       ee: null,
       error:
-        "Earth Engine is not set up yet. Follow readme_for_user/SETUP-EARTHENGINE.md to add the key file.",
+        "Earth Engine is not set up: set GEE_PROJECT_ID and GEE_KEY_JSON (or GEE_KEY_FILE).",
     };
   }
 
@@ -111,14 +111,14 @@ export async function getEe(): Promise<EeConnection | EeFailure> {
     let error = "Could not connect to Earth Engine.";
     if (/not registered|not been used|is disabled|SERVICE_DISABLED/i.test(detail)) {
       error =
-        "This Google project isn't registered for Earth Engine yet — redo Step 1 of readme_for_user/SETUP-EARTHENGINE.md.";
+        "This Google Cloud project is not registered for Earth Engine (register it at code.earthengine.google.com/register).";
     } else if (roleMatch) {
-      error = `The service account is missing the "${roleMatch[0]}" role. Add it on the IAM page — see Step 2b of readme_for_user/SETUP-EARTHENGINE.md.`;
+      error = `The service account is missing the "${roleMatch[0]}" role; add it on the Google Cloud IAM page.`;
     } else if (/permission|PERMISSION_DENIED|forbidden|403/i.test(detail)) {
       error =
-        "The service account lacks permission on this project — see Step 2 of readme_for_user/SETUP-EARTHENGINE.md.";
+        "The service account lacks permission on this project. It needs Earth Engine Resource Viewer and Service Usage Consumer.";
     } else if (/invalid_grant|invalid JWT|Invalid key|PEM/i.test(detail)) {
-      error = "The key file looks invalid or corrupted — download a fresh one (Step 3).";
+      error = "The service-account key looks invalid or corrupted; download a fresh one.";
     }
     return { ee: null, error, detail };
   }

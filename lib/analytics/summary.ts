@@ -296,7 +296,7 @@ export async function readAnalytics(): Promise<Analytics> {
     return blank(
       v.missing
         ? "The `visits` table does not exist yet, so nothing has been recorded. " +
-            "Create it with the SQL in readme_for_user/SETUP-ANALYTICS.md. Recording " +
+            "Create it by running supabase/analytics.sql in the Supabase SQL editor. Recording " +
             "starts with the next visitor — there is no way to backfill what was missed."
         : `Could not read the visit log: ${v.why}.`
     );
@@ -309,7 +309,7 @@ export async function readAnalytics(): Promise<Analytics> {
       "The database is older than the site. The `visits` table does not have the " +
         "columns that identify people, so the sections about visitors, devices, timing " +
         "and how the pin was placed are empty — lookups and counties are unaffected. " +
-        "Run the second SQL block in readme_for_user/SETUP-ANALYTICS.md; it takes a minute."
+        "Run supabase/analytics.sql in the Supabase SQL editor; it adds them in a minute."
     );
   }
 
@@ -317,7 +317,7 @@ export async function readAnalytics(): Promise<Analytics> {
     out.warnings.push(
       e.missing
         ? "The `events` table does not exist yet, so the sections about what people " +
-            "used are empty. It is the second block of SQL in SETUP-ANALYTICS.md; the " +
+            "used are empty. Run supabase/analytics.sql to create it; the " +
             "rest of this page is unaffected."
         : `The event log could not be read: ${e.why}. Everything else on this page is unaffected.`
     );
