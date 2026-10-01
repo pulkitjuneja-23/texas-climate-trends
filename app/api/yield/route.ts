@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { validateLatLon, inTexas } from "@/lib/geo";
 import { readCountyYields, yieldEnabled } from "@/lib/yield/read";
-import { overLimit, clientKey, DEGRADED_CACHE } from "@/lib/api/guard";
+import { overLimit, clientKey, DEGRADED_CACHE, LIMITS } from "@/lib/api/guard";
 
 /**
  * GET /api/yield?lat=&lon=
@@ -28,7 +28,7 @@ export async function GET(req: Request) {
   try {
     const { lat, lon } = validateLatLon(url.searchParams.get("lat"), url.searchParams.get("lon"));
 
-    if (overLimit("yield", clientKey(req), 60)) {
+    if (overLimit("yield", clientKey(req), LIMITS.data)) {
       return NextResponse.json(
         { available: false, reason: "Too many requests. Please wait a minute." },
         { status: 429 }

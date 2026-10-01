@@ -3,6 +3,7 @@ import { readCountyOnly } from "@/lib/yield/read";
 import { logVisit } from "@/lib/analytics/visits";
 import { validateLatLon } from "@/lib/geo";
 import { envelopeFrom, beaconOk, beaconAdmitted } from "../_beacon";
+import { LIMITS } from "@/lib/api/guard";
 
 /**
  * POST /api/visit — record that someone looked at a location.
@@ -30,7 +31,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  if (!beaconAdmitted(req, "visit", 30)) return beaconOk();
+  if (!beaconAdmitted(req, "visit", LIMITS.visit)) return beaconOk();
   try {
     const body = (await req.json()) as Record<string, unknown>;
 

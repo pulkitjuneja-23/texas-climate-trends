@@ -68,6 +68,9 @@ export default function LocationPicker({
   const [open, setOpen] = useState(false);
   /** Set once a search has run, so "no matches" can be reported instead of silence. */
   const [searched, setSearched] = useState(false);
+  // Set when the server could not search right now (busy or failed), which is
+  // not the same as "no such place" and must not be shown or cached as one.
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
@@ -101,14 +104,27 @@ export default function LocationPicker({
     }
 
     setSearching(true);
+    setSearchError(null);
     try {
       const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
       const json = await res.json();
+      if (!res.ok) {
+        // Busy or failed: say so, and do NOT cache it, so pressing Search again
+        // actually tries again instead of replaying an empty answer.
+        setHits([]);
+        setSearchError(
+          res.status === 429
+            ? "Search is busy right now. Please try again in a few seconds, or click the map."
+            : "Search isn't working right now. Please try again shortly, or click the map."
+        );
+        return;
+      }
       const results: SearchHit[] = json.results ?? [];
       cacheRef.current.set(q.toLowerCase(), results);
       setHits(results);
     } catch {
       setHits([]);
+      setSearchError("Search isn't working right now. Please try again shortly, or click the map.");
     } finally {
       setSearched(true);
       setOpen(true);
@@ -293,6 +309,10 @@ export default function LocationPicker({
                     </span>
                   </button>
                 ))
+              ) : searchError ? (
+                <div className="small muted" style={{ padding: "10px 12px" }}>
+                  {searchError}
+                </div>
               ) : (
                 <div className="small muted" style={{ padding: "10px 12px" }}>
                   No matches. Search works on <strong>towns and cities</strong> — a rural street

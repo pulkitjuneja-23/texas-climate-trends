@@ -3,7 +3,7 @@ import { fetchNWSForecast } from "@/lib/sources/nws";
 import { fetchExtendedForecast } from "@/lib/sources/openmeteo";
 import { fetchAllOutlooks } from "@/lib/sources/cpc";
 import { validateLatLon, snapToStep } from "@/lib/geo";
-import { requireTexas, enforceLimit, rejection, DEGRADED_CACHE } from "@/lib/api/guard";
+import { requireTexas, enforceLimit, rejection, DEGRADED_CACHE, LIMITS } from "@/lib/api/guard";
 
 export const runtime = "nodejs";
 export const revalidate = 3600;
@@ -29,7 +29,7 @@ export async function GET(req: Request) {
   try {
     const raw = validateLatLon(url.searchParams.get("lat"), url.searchParams.get("lon"));
     requireTexas(raw.lat, raw.lon);
-    enforceLimit(req, "forecast", 60);
+    enforceLimit(req, "forecast", LIMITS.data);
 
     /**
      * Rounded to 0.01° (~1 km) before anything goes upstream. NWS forecasts on a

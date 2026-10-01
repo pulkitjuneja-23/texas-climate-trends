@@ -1,5 +1,6 @@
 import { logEvent } from "@/lib/analytics/visits";
 import { envelopeFrom, beaconOk, beaconAdmitted } from "../_beacon";
+import { LIMITS } from "@/lib/api/guard";
 
 /**
  * POST /api/event — record that a feature was used.
@@ -22,7 +23,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  if (!beaconAdmitted(req, "event", 60)) return beaconOk();
+  if (!beaconAdmitted(req, "event", LIMITS.event)) return beaconOk();
   try {
     const body = (await req.json()) as Record<string, unknown>;
     await logEvent({

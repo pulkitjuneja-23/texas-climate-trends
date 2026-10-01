@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { TEXAS_BOUNDS, validateLatLon } from "@/lib/geo";
-import { enforceLimit, spaced, rejection, RequestRejected } from "@/lib/api/guard";
+import { enforceLimit, spaced, rejection, RequestRejected, LIMITS } from "@/lib/api/guard";
 
 export const runtime = "nodejs";
 export const revalidate = 86400;
@@ -28,8 +28,50 @@ const UA = "TexasClimateTrends/0.1 (agricultural decision support; contact via r
 const MAX_QUERY_CHARS = 200;
 
 async function nominatimSlot(): Promise<void> {
-  if (!(await spaced("nominatim", 1000, 3000))) {
+  // Waits up to 6 s for a turn; a person will wait that long for a search.
+  if (!(await spaced("nominatim", 1000, 6000))) {
     throw new RequestRejected("Search is busy. Please try again in a few seconds.", 429);
+  }
+}
+
+/**
+ * One Nominatim request per distinct question, however many people ask it.
+ *
+ * In a room where everyone searches the same town, or clicks near the same
+ * farm, the answer is (1) served from memory if this instance already has it,
+ * or (2) shared with whoever is already waiting for it, so the crowd costs
+ * Nominatim ONE request and nobody else queues for a turn. Without (2), thirty
+ * simultaneous searches for "Temple, TX" each waited for their own one-second
+ * slot and only eight were answered. Place names change rarely, so answers are
+ * kept a day.
+ */
+const ANSWER_TTL_MS = 24 * 3600 * 1000;
+const MAX_ANSWERS = 2000;
+const answers = new Map<string, { at: number; body: unknown }>();
+const pending = new Map<string, Promise<unknown>>();
+
+async function lookup(key: string, fetchBody: () => Promise<unknown>): Promise<unknown> {
+  const hit = answers.get(key);
+  if (hit && Date.now() - hit.at < ANSWER_TTL_MS) return hit.body;
+
+  const waiting = pending.get(key);
+  if (waiting) return waiting;
+
+  const work = (async () => {
+    await nominatimSlot();
+    const body = await fetchBody();
+    if (answers.size >= MAX_ANSWERS) {
+      const oldest = answers.keys().next().value;
+      if (oldest !== undefined) answers.delete(oldest);
+    }
+    answers.set(key, { at: Date.now(), body });
+    return body;
+  })();
+  pending.set(key, work);
+  try {
+    return await work;
+  } finally {
+    pending.delete(key);
   }
 }
 
@@ -77,36 +119,41 @@ export async function GET(req: Request) {
   const lon = url.searchParams.get("lon");
 
   try {
-    enforceLimit(req, "geocode", 20);
+    enforceLimit(req, "geocode", LIMITS.geocode);
 
     if (lat && lon) {
       // Map clicks may fall just outside Texas (the page then says so), so
       // reverse lookups are not bounded to Texas, only checked to be numbers.
       const point = validateLatLon(lat, lon);
-      const params = new URLSearchParams({
-        format: "jsonv2",
-        lat: point.lat.toFixed(5),
-        lon: point.lon.toFixed(5),
-        zoom: "10",
-        addressdetails: "1",
+      // Rounded to ~100 m: close enough that clicks on one farm share an
+      // answer, fine enough that the county name is right next to a county line.
+      const key = `r:${point.lat.toFixed(3)},${point.lon.toFixed(3)}`;
+      const body = await lookup(key, async () => {
+        const params = new URLSearchParams({
+          format: "jsonv2",
+          lat: point.lat.toFixed(5),
+          lon: point.lon.toFixed(5),
+          zoom: "10",
+          addressdetails: "1",
+        });
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?${params}`, {
+          headers: { "User-Agent": UA },
+          next: { revalidate: 86400 },
+        });
+        if (!res.ok) throw new Error(`Nominatim reverse returned ${res.status}`);
+        const p = (await res.json()) as NominatimPlace;
+        return {
+          results: [
+            {
+              label: shortLabel(p),
+              lat: Number(p.lat),
+              lon: Number(p.lon),
+              county: countyOf(p.address),
+            },
+          ],
+        };
       });
-      await nominatimSlot();
-      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?${params}`, {
-        headers: { "User-Agent": UA },
-        next: { revalidate: 86400 },
-      });
-      if (!res.ok) throw new Error(`Nominatim reverse returned ${res.status}`);
-      const p = (await res.json()) as NominatimPlace;
-      return NextResponse.json({
-        results: [
-          {
-            label: shortLabel(p),
-            lat: Number(p.lat),
-            lon: Number(p.lon),
-            county: countyOf(p.address),
-          },
-        ],
-      });
+      return NextResponse.json(body);
     }
 
     if (!q || q.trim().length < 2) {
@@ -116,37 +163,37 @@ export async function GET(req: Request) {
       throw new RequestRejected("That search is too long.");
     }
 
-    const params = new URLSearchParams({
-      format: "jsonv2",
-      q: q.trim(),
-      addressdetails: "1",
-      limit: "8",
-      countrycodes: "us",
-      // Bias toward Texas without hard-excluding just-over-the-line fields.
-      viewbox: `${TEXAS_BOUNDS.minLon},${TEXAS_BOUNDS.maxLat},${TEXAS_BOUNDS.maxLon},${TEXAS_BOUNDS.minLat}`,
-      bounded: "0",
+    const body = await lookup(`q:${q.trim().toLowerCase()}`, async () => {
+      const params = new URLSearchParams({
+        format: "jsonv2",
+        q: q.trim(),
+        addressdetails: "1",
+        limit: "8",
+        countrycodes: "us",
+        // Bias toward Texas without hard-excluding just-over-the-line fields.
+        viewbox: `${TEXAS_BOUNDS.minLon},${TEXAS_BOUNDS.maxLat},${TEXAS_BOUNDS.maxLon},${TEXAS_BOUNDS.minLat}`,
+        bounded: "0",
+      });
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, {
+        headers: { "User-Agent": UA },
+        next: { revalidate: 86400 },
+      });
+      if (!res.ok) throw new Error(`Nominatim search returned ${res.status}`);
+
+      const places = (await res.json()) as NominatimPlace[];
+      const results = places
+        .map((p) => ({
+          label: shortLabel(p),
+          lat: Number(p.lat),
+          lon: Number(p.lon),
+          county: countyOf(p.address),
+          state: p.address?.state,
+        }))
+        // Texas hits first, but keep the rest — the tool works anywhere POWER does.
+        .sort((a, b) => Number(b.state === "Texas") - Number(a.state === "Texas"));
+      return { results };
     });
-
-    await nominatimSlot();
-    const res = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, {
-      headers: { "User-Agent": UA },
-      next: { revalidate: 86400 },
-    });
-    if (!res.ok) throw new Error(`Nominatim search returned ${res.status}`);
-
-    const places = (await res.json()) as NominatimPlace[];
-    const results = places
-      .map((p) => ({
-        label: shortLabel(p),
-        lat: Number(p.lat),
-        lon: Number(p.lon),
-        county: countyOf(p.address),
-        state: p.address?.state,
-      }))
-      // Texas hits first, but keep the rest — the tool works anywhere POWER does.
-      .sort((a, b) => Number(b.state === "Texas") - Number(a.state === "Texas"));
-
-    return NextResponse.json({ results });
+    return NextResponse.json(body);
   } catch (e) {
     const refused = rejection(e);
     if (refused) {

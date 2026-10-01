@@ -99,6 +99,33 @@ export function overLimit(bucket: string, key: string, max: number, windowMs = 6
   return w.count > max;
 }
 
+/**
+ * Requests per minute, per internet address, per server instance.
+ *
+ * SET FOR A FULL LECTURE HALL, NOT ONE PERSON. Everyone on one campus or
+ * workshop Wi-Fi usually shares one public address, so these counters see a
+ * room of growers as a single caller. Picking a field costs about one request
+ * per data route, so 600 a minute lets hundreds of people on one network pick
+ * fields in the same minute. Page loads that hit Vercel's cache (the default
+ * view, any place someone viewed recently) never reach these counters at all.
+ *
+ * The heavy lifting against abuse is done elsewhere and costs real users
+ * nothing: Texas-only, 1996..now, the fixed 100 m buffer, rounded forecast
+ * coordinates. These limits are only a brake on one address hammering one
+ * instance. The global cap is a Vercel Firewall rule.
+ *
+ * Search is the real bottleneck in a crowd, and not by our choice: Nominatim
+ * allows about one search a second (see `spaced`). Its per-address limit is
+ * therefore only a backstop.
+ */
+export const LIMITS = {
+  /** /api/history, /api/et, /api/forecast, /api/yield — each counted separately. */
+  data: 600,
+  geocode: 120,
+  visit: 600,
+  event: 1200,
+} as const;
+
 /** Throws a 429 when the caller is over the limit for this bucket. */
 export function enforceLimit(req: Request, bucket: string, max: number): void {
   if (overLimit(bucket, clientKey(req), max)) {

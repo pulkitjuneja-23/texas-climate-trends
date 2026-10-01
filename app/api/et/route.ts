@@ -14,6 +14,7 @@ import {
   enforceLimit,
   rejection,
   DEGRADED_CACHE,
+  LIMITS,
 } from "@/lib/api/guard";
 
 /**
@@ -73,7 +74,7 @@ export async function GET(req: Request) {
   try {
     const { lat, lon } = validateLatLon(url.searchParams.get("lat"), url.searchParams.get("lon"));
     requireTexas(lat, lon);
-    enforceLimit(req, "et", 60);
+    enforceLimit(req, "et", LIMITS.data);
 
     // Fixed, not caller-chosen. The page never sends a buffer, and accepting up
     // to 2 km let any caller ask Earth Engine for ~400x the default's work.

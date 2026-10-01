@@ -2329,8 +2329,16 @@ secrets were already Production-only).
   outside the same Texas box the page already used to decide whether to ask (`inTexas`), takes
   whole years clamped to `HISTORY_START_YEAR`..now (`endYear=1e300` used to loop until the function
   ran out of memory; pre-1995 years forced Earth Engine), and has a per-IP, per-instance rate
-  limit (60/min data routes, 20/min geocode, 30/60 per min beacons). **Per-instance only** —
-  the global control is a Vercel Firewall rate-limit rule.
+  limit (`LIMITS` in guard.ts: 600/min per data route, 120 geocode, 600 visit, 1200 event).
+  **Sized for a lecture hall on one campus Wi-Fi**, which reaches the server as ONE address — the
+  first draft (60/min) would have shown a workshop "too many requests". CDN-served responses never
+  reach the counters. **Per-instance only** — the global control is a Vercel Firewall rule.
+- **Town search is the real crowd bottleneck**, by Nominatim's policy (~1 req/s), not ours.
+  `/api/geocode` keeps answers in memory for a day AND shares an in-flight lookup between
+  simultaneous identical questions: before that, 30 people searching "Temple, TX" at once each
+  queued for their own one-second slot and only 8 were answered; now all 30 are, from one upstream
+  call. LocationPicker shows "Search is busy, try again" on a 429 instead of "No matches", and
+  no longer caches that failure as an empty answer.
 - `/api/et` buffer is fixed at the 100 m default (was caller-chosen up to 2 km, ~400x the Earth
   Engine work); raw Earth Engine `detail` no longer returned.
 - `/api/forecast` rounds to 0.01° before going upstream, so nudged coordinates cannot each spend a

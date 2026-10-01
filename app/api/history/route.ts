@@ -13,6 +13,7 @@ import {
   enforceLimit,
   rejection,
   DEGRADED_CACHE,
+  LIMITS,
 } from "@/lib/api/guard";
 import type { DailyRecord, TaggedRecord } from "@/lib/types";
 
@@ -146,7 +147,7 @@ export async function GET(req: Request) {
   try {
     const { lat, lon } = validateLatLon(url.searchParams.get("lat"), url.searchParams.get("lon"));
     requireTexas(lat, lon);
-    enforceLimit(req, "history", 60);
+    enforceLimit(req, "history", LIMITS.data);
 
     const sourceId = url.searchParams.get("source") ?? DEFAULT_SOURCE_ID;
     const source = getSource(sourceId);
