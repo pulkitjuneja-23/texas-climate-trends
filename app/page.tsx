@@ -1523,18 +1523,18 @@ export default function Page() {
                 </div>
               </li>
               <li>
-                <img className="avatar" src="/img/people/baath.jpg" alt="Gurjinder S. Baath" width={48} height={48} />
+                <img className="avatar" src="/img/people/baath.jpg" alt="Dr. Gurjinder S. Baath" width={48} height={48} />
                 <div>
-                  <strong>Gurjinder S. Baath</strong>
+                  <strong>Dr. Gurjinder S. Baath</strong>
                   <span className="role">
                     Assistant Professor · Blackland Research and Extension Center
                   </span>
                 </div>
               </li>
               <li>
-                <img className="avatar" src="/img/people/burke.jpg" alt="Joseph A. Burke" width={48} height={48} />
+                <img className="avatar" src="/img/people/burke.jpg" alt="Dr. Joseph A. Burke" width={48} height={48} />
                 <div>
-                  <strong>Joseph A. Burke</strong>
+                  <strong>Dr. Joseph A. Burke</strong>
                   <span className="role">Assistant Professor · Texas A&amp;M AgriLife Lubbock</span>
                 </div>
               </li>

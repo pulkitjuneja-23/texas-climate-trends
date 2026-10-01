@@ -100,9 +100,8 @@ owners.
 | File | Person | Source |
 |---|---|---|
 | `people/juneja.jpg` | Pulkit Juneja | https://pulkitjuneja-23.github.io/assets/img/headshot.jpg (his own site) |
-| `people/baath.jpg` | Gurjinder S. Baath | https://blackland.tamu.edu/media/ijkked3j/baath.jpg (Blackland Research and Extension Center profile) |
+| `people/baath.jpg` | Gurjinder S. Baath | https://blackland.tamu.edu/media/1skgrxgo/baath_50.jpg (Digital Agriculture Lab page, https://blackland.tamu.edu/dalab/ — chosen by the authors on 1 October 2026 over his profile-page headshot) |
 | `people/burke.jpg` | Joseph A. Burke | https://agrilifepeople.tamu.edu/img/pictures/26669.png (AgriLife People directory) |
 
-Dr. Baath's
-AgriLife People entry has no photograph — its image URL returns an HTML page —
-which is why his comes from the research centre's site instead.
+Dr. Baath's AgriLife People entry has no photograph — its image URL returns an
+HTML page — which is why his comes from the research centre's site instead.
