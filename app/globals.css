@@ -2345,14 +2345,14 @@ footer.site .fold ul.people {
   list-style: none;
   padding-left: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
-  gap: 12px 20px;
+  grid-template-columns: repeat(auto-fit, minmax(min(270px, 100%), 1fr));
+  gap: 14px 22px;
 }
 
 footer.site .people li {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
   margin: 0;
   min-width: 0;
 }
@@ -2362,10 +2362,23 @@ footer.site .people strong {
   color: var(--text-primary);
 }
 
-footer.site .people .role {
+footer.site .people strong {
+  margin-bottom: 2px;
+}
+
+/* Two lines under the name: position, then institution and city. */
+footer.site .people .role,
+footer.site .people .place {
   display: block;
+  line-height: 1.45;
+}
+
+footer.site .people .role {
+  color: var(--text-primary);
+}
+
+footer.site .people .place {
   color: var(--text-secondary);
-  line-height: 1.4;
 }
 
 /*
@@ -2374,9 +2387,9 @@ footer.site .people .role {
 */
 footer.site .avatar {
   flex: 0 0 auto;
-  width: 48px;
-  height: 48px;
-  border-radius: 10px;
+  width: 96px;
+  height: 96px;
+  border-radius: 14px;
   object-fit: cover;
   background: var(--band-outer);
 }

@@ -1493,8 +1493,9 @@ export default function Page() {
             The button is labelled "About us" (the authors' choice, 1 October
             2026) and holds both the team and the feedback address.
 
-            Positions are a plain title and location, as the authors asked — no
-            specialisms, no street addresses. Checked against each person's
+            Each person has two lines under their name, worded by the authors on
+            1 October 2026: position (with specialism) on the first, institution
+            and city on the second. No street addresses. Checked against each person's
             Texas A&M profile page on 30 September 2026; re-check there if
             anyone is promoted or changes post. Names run in author order.
 
@@ -1514,26 +1515,27 @@ export default function Page() {
             */}
             <ul className="people">
               <li>
-                <img className="avatar" src="/img/people/juneja.jpg" alt="Pulkit Juneja" width={48} height={48} />
+                <img className="avatar" src="/img/people/juneja.jpg" alt="Pulkit Juneja" width={96} height={96} />
                 <div>
                   <strong>Pulkit Juneja</strong>
-                  <span className="role">PhD Student · Blackland Research and Extension Center</span>
+                  <span className="role">PhD Student (Agronomy)</span>
+                  <span className="place">Texas A&amp;M University</span>
                 </div>
               </li>
               <li>
-                <img className="avatar" src="/img/people/baath.jpg" alt="Dr. Gurjinder S. Baath" width={48} height={48} />
+                <img className="avatar" src="/img/people/baath.jpg" alt="Dr. Gurjinder S. Baath" width={96} height={96} />
                 <div>
                   <strong>Dr. Gurjinder S. Baath</strong>
-                  <span className="role">
-                    Assistant Professor · Blackland Research and Extension Center
-                  </span>
+                  <span className="role">Assistant Professor (Digital Agriculture)</span>
+                  <span className="place">Texas A&amp;M AgriLife, Temple</span>
                 </div>
               </li>
               <li>
-                <img className="avatar" src="/img/people/burke.jpg" alt="Dr. Joseph A. Burke" width={48} height={48} />
+                <img className="avatar" src="/img/people/burke.jpg" alt="Dr. Joseph A. Burke" width={96} height={96} />
                 <div>
                   <strong>Dr. Joseph A. Burke</strong>
-                  <span className="role">Assistant Professor · Texas A&amp;M AgriLife Lubbock</span>
+                  <span className="role">Assistant Professor (Cropping Systems)</span>
+                  <span className="place">Texas A&amp;M AgriLife, Lubbock</span>
                 </div>
               </li>
             </ul>
