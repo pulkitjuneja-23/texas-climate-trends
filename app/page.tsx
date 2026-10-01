@@ -1490,10 +1490,8 @@ export default function Page() {
             names line was tried and removed on 30 September 2026: with the
             team one click away it only repeated what the button holds.
 
-            The button is "Team & contact" rather than "Meet the team" because
-            the feedback address lives inside it, and somebody looking for a way
-            to ask a question will not think to open a button that only
-            promises people.
+            The button is labelled "About us" (the authors' choice, 1 October
+            2026) and holds both the team and the feedback address.
 
             Positions are a plain title and location, as the authors asked — no
             specialisms, no street addresses. Checked against each person's
@@ -1507,7 +1505,7 @@ export default function Page() {
           */}
           <div className="folds">
           <details className="fold">
-            <summary>Team &amp; contact</summary>
+            <summary>About us</summary>
             {/*
               Photos: Pulkit's from his own site, the others from their Texas
               A&M profile pages — each cropped to the face and reduced to a
