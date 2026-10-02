@@ -86,6 +86,22 @@ interface EtPayload {
  * the client another, which is a hydration mismatch: React discards the server
  * markup and logs an error.
  */
+/**
+ * The footer's three sections, opened by a row of centred buttons.
+ *
+ * They replaced two small <details> pills in a corner (2 October 2026, at the
+ * authors' request): the pills were easy to miss and their drop-down arrow read
+ * as a menu. The panels stay in the DOM with `hidden`, so the citations remain
+ * in the page source for search engines.
+ */
+type FooterTab = "about" | "sources" | "acknowledgements";
+
+const FOOTER_TABS: Array<{ id: FooterTab; label: string }> = [
+  { id: "about", label: "About us" },
+  { id: "sources", label: "Data sources and citations" },
+  { id: "acknowledgements", label: "Acknowledgements" },
+];
+
 function readUrlDefaults(): {
   place: Place | null;
   source: string | null;
@@ -126,6 +142,8 @@ function readUrlDefaults(): {
 export default function Page() {
   const [place, setPlace] = useState<Place>({ ...DEFAULT_PLACE });
   const [sourceId, setSourceId] = useState(DEFAULT_SOURCE_ID);
+  /** Which footer section is open, if any. Clicking its button again closes it. */
+  const [footerTab, setFooterTab] = useState<FooterTab | null>(null);
   /** Blocks the data fetch until any URL overrides have been applied, so a
    *  shared link does not fire a throwaway request for the default location. */
   const [urlReady, setUrlReady] = useState(false);
@@ -1512,9 +1530,30 @@ export default function Page() {
             DOI first; a citation without the DOI would then need changing in
             every copy already taken.
           */}
-          <div className="folds">
-          <details className="fold">
-            <summary>About us</summary>
+          <div className="footer-tabs" role="tablist" aria-label="More about this site">
+            {FOOTER_TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                id={`footer-tab-${t.id}`}
+                aria-selected={footerTab === t.id}
+                aria-controls={`footer-panel-${t.id}`}
+                className={footerTab === t.id ? "active" : undefined}
+                onClick={() => setFooterTab((cur) => (cur === t.id ? null : t.id))}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          <section
+            className="footer-panel"
+            id="footer-panel-about"
+            role="tabpanel"
+            aria-labelledby="footer-tab-about"
+            hidden={footerTab !== "about"}
+          >
             {/*
               Photos supplied by the authors, each cropped to the face and
               reduced to a 192 px square (~7 KB) so the footer stays light.
@@ -1551,7 +1590,7 @@ export default function Page() {
                 pulkit.juneja@tamu.edu
               </a>
             </p>
-          </details>
+          </section>
 
           {/*
             FORMAL CITATIONS, verified against the registries on 30 September
@@ -1566,18 +1605,18 @@ export default function Page() {
             "© OpenStreetMap contributors" wording.
           */}
           {/*
-            COLLAPSED BY DEFAULT, behind a button. Nine citations took most of
-            the footer's height for something a grower reads rarely and a
+            CLOSED BY DEFAULT, behind a button. Nine citations took most of the
+            footer's height for something a grower reads rarely and a
             researcher looks up once. The disclaimer above deliberately stays
             OPEN — it is the one thing every reader should see.
-
-            A native <details> rather than React state: it works before the
-            page's JavaScript has loaded, it is keyboard- and screen-reader-
-            accessible for free, and the citations stay in the page source, so
-            search engines and "find in page" still reach them.
           */}
-          <details className="fold">
-            <summary>Data sources and citations</summary>
+          <section
+            className="footer-panel"
+            id="footer-panel-sources"
+            role="tabpanel"
+            aria-labelledby="footer-tab-sources"
+            hidden={footerTab !== "sources"}
+          >
             <ul>
               <li>
                 <strong>Historical weather (gridMET).</strong> Abatzoglou, J. T. (2013).
@@ -1641,8 +1680,31 @@ export default function Page() {
                 via Nominatim. County boundaries from the U.S. Census Bureau (TIGERweb).
               </li>
             </ul>
-          </details>
-          </div>
+          </section>
+
+          {/*
+            FUNDING ACKNOWLEDGEMENT, worded by the authors (2 October 2026) from
+            their grant acknowledgement, with three edits: "in this poster
+            presentation" became "on this website", and the agency and program
+            take their official names (Natural Resources Conservation Service,
+            singular; Conservation Innovation Grant, capitalised).
+          */}
+          <section
+            className="footer-panel"
+            id="footer-panel-acknowledgements"
+            role="tabpanel"
+            aria-labelledby="footer-tab-acknowledgements"
+            hidden={footerTab !== "acknowledgements"}
+          >
+            <p>
+              This work was supported by the Strengthening Agricultural Systems program grant no.
+              2021-68012-35897 from the USDA National Institute of Food and Agriculture. Additional
+              support was provided by Conservation Innovation Grant no. NR243A750011G011 from the
+              USDA Natural Resources Conservation Service. Any opinions, findings, conclusions, or
+              recommendations expressed on this website are those of the author(s) and do not
+              necessarily reflect the view of the U.S. Department of Agriculture.
+            </p>
+          </section>
           {/*
             THE "WHAT WE RECORD" PARAGRAPH WAS REMOVED ON 21 SEPTEMBER 2026 AT
             THE USER'S REQUEST. Recording that here rather than deleting the

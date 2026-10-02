@@ -2273,75 +2273,87 @@ footer.site .disclaimer {
 }
 
 /*
-  The two collapsed sections — "About this tool" and "Data sources and
-  citations" — are <details> elements whose <summary> is styled as a button.
-  They sit side by side; whichever is opened takes the whole row, so its
-  content has the footer's full width to read in rather than a button's.
+  Three buttons in one centred row — About us, Data sources and citations,
+  Acknowledgements — each opening its section below the row. Sized to be seen
+  and tapped (they were small pills in a corner before 2 October 2026). The
+  open one is filled so it is clear which section is showing.
 */
-footer.site .folds {
+footer.site .footer-tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  align-items: flex-start;
+  justify-content: center;
+  gap: 12px;
 }
 
-footer.site .fold[open] {
-  flex-basis: 100%;
-}
-
-footer.site .fold summary {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  list-style: none;
-  padding: 5px 12px;
+footer.site .footer-tabs button {
+  min-width: 190px;
+  padding: 10px 22px;
   border: 1px solid var(--border-strong);
   border-radius: 999px;
   background: var(--surface-raised);
   color: var(--text-primary);
+  font: inherit;
+  font-size: 0.92rem;
   font-weight: 600;
-  user-select: none;
+  cursor: pointer;
 }
 
-/* Hide the browser's own disclosure triangle and draw one that rotates. */
-footer.site .fold summary::-webkit-details-marker {
-  display: none;
-}
-
-footer.site .fold summary::after {
-  content: "▸";
-  font-size: 0.8em;
-  transition: transform 0.15s ease;
-}
-
-footer.site .fold[open] summary::after {
-  transform: rotate(90deg);
-}
-
-footer.site .fold summary:hover {
+footer.site .footer-tabs button:hover {
   border-color: var(--text-muted);
 }
 
-footer.site .fold summary:focus-visible {
+footer.site .footer-tabs button.active {
+  background: var(--text-primary);
+  border-color: var(--text-primary);
+  color: var(--surface);
+}
+
+footer.site .footer-tabs button:focus-visible {
   outline: 2px solid var(--series-1);
   outline-offset: 2px;
 }
 
-footer.site .fold ul {
-  margin: 10px 0 0;
+footer.site .footer-panel {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+footer.site .footer-panel p {
+  margin: 0;
+}
+
+footer.site .footer-panel ul {
+  margin: 0;
   padding-left: 18px;
 }
 
-footer.site .fold li {
+footer.site .footer-panel li {
   margin-bottom: 5px;
+}
+
+/*
+  On a phone three readable labels cannot share one row, and a two-plus-one
+  wrap looked accidental, so they stack as three equal full-width buttons.
+*/
+@media (max-width: 620px) {
+  footer.site .footer-tabs {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  footer.site .footer-tabs button {
+    min-width: 0;
+    width: 100%;
+    padding: 10px 14px;
+  }
 }
 
 /*
   People: a small card each — photo, name, then "position · location".
   Side by side when there is room, one per row on a phone.
 */
-footer.site .fold ul.people {
+footer.site .footer-panel ul.people {
   list-style: none;
   padding-left: 0;
   display: grid;
