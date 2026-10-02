@@ -1023,6 +1023,8 @@ export default function Page() {
             no expansion to hide on phones and no gloss to keep in step with it.
           */}
           <div className="brand">
+            {/* Decorative: the name beside it already says what it is. */}
+            <img className="brand-logo" src="/img/logo.png" alt="" width={38} height={38} />
             <h1>Texas Weather Explorer</h1>
           </div>
 

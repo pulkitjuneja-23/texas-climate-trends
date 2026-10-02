@@ -309,9 +309,19 @@ a {
   flex-wrap: wrap;
 }
 
-/* Name left, controls right. */
+/* Logo and name left, controls right. */
 .hero-bar .brand {
   margin-right: auto;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+.hero-bar .brand-logo {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  display: block;
 }
 
 /*
@@ -2117,6 +2127,24 @@ tbody tr:last-child td {
 
   .hero-bar .brand h1 {
     font-size: 0.95rem;
+  }
+
+  /*
+    Logo, name and the units switch must still share the first row on a
+    390 px phone: the logo cost 40 px there and pushed the switch onto a row
+    of its own. A slightly smaller logo and a tighter switch win it back.
+  */
+  .hero-bar .brand {
+    gap: 6px;
+  }
+
+  .hero-bar .brand-logo {
+    width: 28px;
+    height: 28px;
+  }
+
+  .hero-bar .seg button {
+    padding: 6px 8px;
   }
 
   .hero-bar .seg {
