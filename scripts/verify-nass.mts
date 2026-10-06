@@ -66,7 +66,7 @@ console.log(`store built ${store.builtAt}, ${Object.keys(store.data).length} cou
 // 1. County lookup against an independent authority
 // ---------------------------------------------------------------------------
 const POINTS: Array<[string, number, number]> = [
-  ["Blackland cropland (default)", 31.3, -97.4],
+  ["Blackland cropland (default)", 31.055, -97.3489],
   ["Waco", 31.549, -97.147],
   ["Lubbock", 33.5779, -101.8552],
   ["Amarillo", 35.222, -101.8313],
@@ -161,7 +161,7 @@ for (const [p, t] of Object.entries(tally)) {
 // ---------------------------------------------------------------------------
 // 4. A real county, end to end
 // ---------------------------------------------------------------------------
-const bell = locateCounty(index, 31.3, -97.4);
+const bell = locateCounty(index, 31.055, -97.3489);
 console.log(`\n--- ${bell?.name} County (${bell?.fips}), the default location ---`);
 const cc = bell ? (store.data[bell.fips] ?? {}) : {};
 console.log(`  crops present: ${Object.keys(cc).join(", ") || "NONE"}`);

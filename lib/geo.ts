@@ -168,12 +168,14 @@ export function validateLatLon(latRaw: string | null, lonRaw: string | null): La
  * someone on pavement means their first impression of the water figures is
  * wrong, and they have no way to know it.
  *
- * This is Blackland Prairie row-crop ground in McLennan/Falls County, verified
- * against OpenET as genuine cropland with a complete nearby station record.
+ * Blackland Prairie research cropland near Temple, Bell County (moved here on
+ * 5 October 2026 from row-crop ground at 31.3, -97.4 near McGregor). The label
+ * below is deliberately generic: the point is shown on the map and in the
+ * location card, and no street address is to appear anywhere on the site.
  */
 export const DEFAULT_PLACE = {
-  lat: 31.3,
-  lon: -97.4,
+  lat: 31.055,
+  lon: -97.3489,
   label: "Blackland Prairie cropland, TX",
 };
 
