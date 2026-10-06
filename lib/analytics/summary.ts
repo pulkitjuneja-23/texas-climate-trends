@@ -15,6 +15,8 @@
  * SERVER-SIDE ONLY. It uses the Supabase service key.
  */
 
+import { centralParts } from "@/lib/format/central";
+
 const BASE = process.env.SUPABASE_URL?.replace(/\/+$/, "").replace(/\/rest\/v1$/i, "");
 const KEY = process.env.SUPABASE_SERVICE_KEY;
 
@@ -39,10 +41,35 @@ const PAGE = 1000;
  */
 const MAX_ROWS = 200_000;
 
+const HOUR = 3_600_000;
 const DAY = 86_400_000;
 
-/** How far back "recent" reaches, for new-versus-returning. */
-export const RECENT_DAYS = 30;
+/**
+ * The windows the page can be cut to, picked from the bar at its top.
+ *
+ * Every figure on the page is computed for the chosen window. Nothing is
+ * stored or cached per window: the page already reads the whole log on every
+ * load, so a window is a filter applied to rows that are in memory anyway.
+ */
+export const RANGES = [
+  { id: "1h", label: "1 hour", ms: HOUR },
+  { id: "3h", label: "3 hours", ms: 3 * HOUR },
+  { id: "6h", label: "6 hours", ms: 6 * HOUR },
+  { id: "12h", label: "12 hours", ms: 12 * HOUR },
+  { id: "24h", label: "24 hours", ms: DAY },
+  { id: "3d", label: "3 days", ms: 3 * DAY },
+  { id: "7d", label: "7 days", ms: 7 * DAY },
+  { id: "30d", label: "30 days", ms: 30 * DAY },
+  { id: "1y", label: "1 year", ms: 365 * DAY },
+  { id: "all", label: "All time", ms: null },
+] as const;
+
+export type Range = (typeof RANGES)[number];
+export const DEFAULT_RANGE = "all";
+
+export function rangeFor(id: string | undefined): Range {
+  return RANGES.find((r) => r.id === id) ?? RANGES.find((r) => r.id === DEFAULT_RANGE)!;
+}
 
 interface RawVisit {
   at: string;
@@ -54,8 +81,6 @@ interface RawVisit {
   visitor: string | null;
   session: string | null;
   screen: string | null;
-  hour: number | null;
-  weekday: number | null;
   self: boolean;
 }
 
@@ -105,17 +130,21 @@ export interface Analytics {
   /** Real lookups whose point fell outside Texas. */
   outsideTexas: number;
 
+  /** First real lookup EVER, whatever the window: "recording since". */
   firstAt: string | null;
+  /** Most recent real lookup inside the window. */
   lastAt: string | null;
 
-  /* ---- recent activity ---- */
-  lookups7: number;
-  lookups30: number;
-  visitors7: number;
-  visitors30: number;
-  /** Visitors active in the last RECENT_DAYS whose FIRST ever visit was inside it. */
+  /** Start of the chosen window (epoch ms), or null for all time. */
+  windowFrom: number | null;
+  /** When the figures were computed, epoch ms. The window ends here. */
+  now: number;
+  /** Every real lookup in the window, epoch ms, oldest first. Feeds the activity chart. */
+  times: number[];
+
+  /** Visitors active in the window whose FIRST ever visit was also inside it. */
   newVisitors: number;
-  /** Active in the last RECENT_DAYS, but first seen before it. */
+  /** Active in the window, but first seen before it. */
   returningVisitors: number;
 
   /* ---- distributions ---- */
@@ -127,7 +156,7 @@ export interface Analytics {
   byVia: Tally[];
   bySource: Tally[];
   byReferrer: Tally[];
-  /** 24 entries, index = local hour. */
+  /** 24 entries, index = hour in Central time. */
   byHour: number[];
   /** 7 entries, index 0 = Sunday. */
   byWeekday: number[];
@@ -158,10 +187,9 @@ function blank(error: string | null): Analytics {
     outsideTexas: 0,
     firstAt: null,
     lastAt: null,
-    lookups7: 0,
-    lookups30: 0,
-    visitors7: 0,
-    visitors30: 0,
+    windowFrom: null,
+    now: Date.now(),
+    times: [],
     newVisitors: 0,
     returningVisitors: 0,
     loyalty: [],
@@ -274,7 +302,7 @@ async function readTable<T>(
   return { ok: true, rows, truncated: rows.length >= MAX_ROWS, reduced };
 }
 
-export async function readAnalytics(): Promise<Analytics> {
+export async function readAnalytics(windowMs: number | null = null): Promise<Analytics> {
   if (!BASE || !KEY) {
     return blank(
       "SUPABASE_URL and SUPABASE_SERVICE_KEY are not both set on this deployment, " +
@@ -285,7 +313,7 @@ export async function readAnalytics(): Promise<Analytics> {
   const [v, e] = await Promise.all([
     readTable<RawVisit>(
       "visits",
-      "at,county_fips,county_name,source,via,referrer,visitor,session,screen,hour,weekday,self",
+      "at,county_fips,county_name,source,via,referrer,visitor,session,screen,self",
       // The shape this table had before 18 September 2026.
       "at,county_fips,county_name,source,self"
     ),
@@ -302,7 +330,7 @@ export async function readAnalytics(): Promise<Analytics> {
     );
   }
 
-  const out = fold(v.rows, e.ok ? e.rows : [], v.truncated || (e.ok && e.truncated));
+  const out = fold(v.rows, e.ok ? e.rows : [], v.truncated || (e.ok && e.truncated), windowMs);
 
   if (v.reduced) {
     out.warnings.push(
@@ -353,12 +381,18 @@ function bump(m: Map<string, number>, k: string | null, by = 1): void {
  * Fold both logs into the numbers the page shows. Pure, so the shaping can be
  * reasoned about — and tested — without a database.
  */
-export function fold(visits: RawVisit[], events: RawEvent[], truncated: boolean): Analytics {
+export function fold(
+  visits: RawVisit[],
+  events: RawEvent[],
+  truncated: boolean,
+  windowMs: number | null = null,
+  now: number = Date.now()
+): Analytics {
   const out = blank(null);
   out.truncated = truncated;
-
-  const now = Date.now();
-  const recentFrom = now - RECENT_DAYS * DAY;
+  out.now = now;
+  const from = windowMs === null ? -Infinity : now - windowMs;
+  out.windowFrom = windowMs === null ? null : from;
 
   const counties = new Map<string, CountyTally>();
   const countyVisitors = new Map<string, Set<string>>();
@@ -371,37 +405,38 @@ export function fold(visits: RawVisit[], events: RawEvent[], truncated: boolean)
 
   const allVisitors = new Set<string>();
   const allSessions = new Set<string>();
-  const visitors7 = new Set<string>();
-  const visitors30 = new Set<string>();
-  /** visitor -> epoch ms of their first ever lookup. */
+  /**
+   * visitor -> epoch ms of their first ever lookup. Taken over the WHOLE log,
+   * not the window: whether somebody is new or returning depends on what came
+   * before the window, which is exactly what the window leaves out.
+   */
   const firstSeen = new Map<string, number>();
+  for (const r of visits) {
+    if (r.self) continue;
+    if (out.firstAt === null) out.firstAt = r.at;
+    if (!r.visitor) continue;
+    const t = Date.parse(r.at);
+    const prev = firstSeen.get(r.visitor);
+    if (prev === undefined || t < prev) firstSeen.set(r.visitor, t);
+  }
   /** visitor -> the distinct sessions they have had. */
   const sessionsOf = new Map<string, Set<string>>();
   /** session -> how many lookups it contained. */
   const lookupsInSession = new Map<string, number>();
 
   for (const r of visits) {
+    const t = Date.parse(r.at);
+    if (!(t >= from)) continue;
     if (r.self) {
       out.selfLookups++;
       continue;
     }
     out.lookups++;
-
-    if (out.firstAt === null) out.firstAt = r.at;
     out.lastAt = r.at;
-
-    const t = Date.parse(r.at);
-    const recent30 = t >= recentFrom;
-    const recent7 = t >= now - 7 * DAY;
-    if (recent7) out.lookups7++;
-    if (recent30) out.lookups30++;
+    out.times.push(t);
 
     if (r.visitor) {
       allVisitors.add(r.visitor);
-      const prev = firstSeen.get(r.visitor);
-      if (prev === undefined || t < prev) firstSeen.set(r.visitor, t);
-      if (recent7) visitors7.add(r.visitor);
-      if (recent30) visitors30.add(r.visitor);
       if (r.session) {
         let s = sessionsOf.get(r.visitor);
         if (!s) sessionsOf.set(r.visitor, (s = new Set()));
@@ -416,21 +451,25 @@ export function fold(visits: RawVisit[], events: RawEvent[], truncated: boolean)
       lookupsInSession.set(r.session, (lookupsInSession.get(r.session) ?? 0) + 1);
     }
 
-    // `at` is timestamptz and comes back in UTC. The DAY buckets use it as-is;
-    // the hour and weekday buckets use the visitor's OWN clock, sent with the
-    // beacon, because "growers check this over breakfast" is a claim about
-    // their morning and Texas spans two time zones.
-    const day = r.at.slice(0, 10);
-    days.set(day, (days.get(day) ?? 0) + 1);
+    // `at` comes back in UTC. Slicing the date off it gave the UTC day, which
+    // put every visit after about 7 PM in Texas on the following date (fixed
+    // 5 October 2026). Days, months, hours and weekdays are all Central time
+    // now, so the whole page reads on one clock.
+    //
+    // Hour and weekday used to come from the visitor's own clock, sent with the
+    // beacon. That is truer for El Paso, an hour behind, but it also put
+    // visitors abroad on their own clocks and disagreed with the rest of the
+    // page. The beacon still sends them; they are simply not read here.
+    const c = centralParts(t);
+    days.set(c.day, (days.get(c.day) ?? 0) + 1);
 
-    const month = r.at.slice(0, 7);
-    let mo = months.get(month);
-    if (!mo) months.set(month, (mo = { lookups: 0, visitors: new Set() }));
+    let mo = months.get(c.month);
+    if (!mo) months.set(c.month, (mo = { lookups: 0, visitors: new Set() }));
     mo.lookups++;
     if (r.visitor) mo.visitors.add(r.visitor);
 
-    if (r.hour !== null && r.hour >= 0 && r.hour < 24) out.byHour[r.hour]++;
-    if (r.weekday !== null && r.weekday >= 0 && r.weekday < 7) out.byWeekday[r.weekday]++;
+    out.byHour[c.hour]++;
+    out.byWeekday[c.weekday]++;
 
     bump(screens, r.screen);
     bump(vias, r.via);
@@ -441,10 +480,10 @@ export function fold(visits: RawVisit[], events: RawEvent[], truncated: boolean)
       out.outsideTexas++;
       continue;
     }
-    const c = counties.get(r.county_fips);
-    if (c) {
-      c.lookups++;
-      c.lastAt = r.at;
+    const ct = counties.get(r.county_fips);
+    if (ct) {
+      ct.lookups++;
+      ct.lastAt = r.at;
     } else {
       counties.set(r.county_fips, {
         fips: r.county_fips,
@@ -463,24 +502,22 @@ export function fold(visits: RawVisit[], events: RawEvent[], truncated: boolean)
 
   out.visitors = allVisitors.size;
   out.sessions = allSessions.size;
-  out.visitors7 = visitors7.size;
-  out.visitors30 = visitors30.size;
 
   /*
     NEW versus RETURNING, and the one way this can mislead.
 
-    "New" means: active in the last 30 days, and the first time we ever saw this
-    code was also inside those 30 days. Anyone whose first visit predates the
-    window counts as returning.
+    "New" means: active in the chosen window, and the first time we ever saw
+    this code was also inside it. Anyone whose first visit predates the window
+    counts as returning.
 
-    THE CAVEAT THAT MATTERS: for the first 30 days after this shipped, EVERY
-    visitor is necessarily new, because there is no earlier record for anyone to
-    be returning from. The page says so rather than letting a meaningless 100%
-    be read as a finding.
+    THE CAVEAT THAT MATTERS: for "All time", or any window reaching back to the
+    start of the log, EVERY visitor is necessarily new, because there is no
+    earlier record for anyone to be returning from. The page says so rather
+    than letting a meaningless 100% be read as a finding.
   */
-  for (const v of visitors30) {
+  for (const v of allVisitors) {
     const first = firstSeen.get(v);
-    if (first !== undefined && first >= recentFrom) out.newVisitors++;
+    if (first !== undefined && first >= from) out.newVisitors++;
     else out.returningVisitors++;
   }
 
@@ -525,7 +562,7 @@ export function fold(visits: RawVisit[], events: RawEvent[], truncated: boolean)
   const featureSessions = new Map<string, Map<string, Set<string>>>();
   const withEvents = new Set<string>();
   for (const ev of events) {
-    if (ev.self) continue;
+    if (ev.self || !(Date.parse(ev.at) >= from)) continue;
     const sessionKey = ev.session ?? `~${ev.visitor ?? Math.random()}`;
     withEvents.add(sessionKey);
     let byLabel = featureSessions.get(ev.kind);

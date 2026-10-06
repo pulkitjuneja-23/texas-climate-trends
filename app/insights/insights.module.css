@@ -51,6 +51,49 @@
   color: var(--ink-soft);
 }
 
+/* ---- time-window picker, pinned to the top while scrolling --------------- */
+
+.rangeBar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 0;
+  margin-bottom: 16px;
+  background: var(--ground);
+  border-bottom: 1px solid var(--rule);
+}
+
+.rangeL {
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  margin-right: 4px;
+}
+
+.rangeBar a {
+  padding: 5px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 0.85rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.rangeBar a:hover {
+  border-color: var(--ink-faint);
+}
+
+.rangeBar a.rangeOn {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fff;
+}
+
 /* ---- the "nothing here" / "something is wrong" card ---------------------- */
 
 .problem {
@@ -472,5 +515,12 @@
 
   .statN {
     font-size: 1.3rem;
+  }
+
+  /* One scrolling row on a phone, so the pinned bar stays one line tall
+     instead of covering a third of the screen. */
+  .rangeBar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
   }
 }

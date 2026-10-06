@@ -2,10 +2,18 @@ import { notFound } from "next/navigation";
 import { timingSafeEqual } from "node:crypto";
 import type { Metadata } from "next";
 
-import { readAnalytics, RECENT_DAYS, type Tally } from "@/lib/analytics/summary";
+import {
+  readAnalytics,
+  RANGES,
+  rangeFor,
+  type Analytics,
+  type Range,
+  type Tally,
+} from "@/lib/analytics/summary";
 import { readAllCounties } from "@/lib/yield/read";
 import { projectCounties, fillFor, BINS, NO_DATA_FILL } from "@/lib/analytics/choropleth";
 import { formatDate } from "@/lib/format/date";
+import { centralParts, formatCentral, formatCentralHour } from "@/lib/format/central";
 import s from "./insights.module.css";
 
 /**
@@ -65,7 +73,9 @@ function tokenMatches(given: string | undefined, expected: string): boolean {
 }
 
 const MAP_WIDTH = 900;
-const STRIP_DAYS = 60;
+const MINUTE = 60_000;
+const HOUR = 3_600_000;
+const DAY = 86_400_000;
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 /**
@@ -198,6 +208,75 @@ function Cycle({ values, ticks }: { values: number[]; ticks: string[] }) {
   );
 }
 
+interface Bucket {
+  n: number;
+  /** Tooltip text. */
+  label: string;
+}
+
+/**
+ * The activity chart's bars, sized to the window.
+ *
+ * Short windows are cut into equal slices counted back from now (an hour in
+ * five-minute slices, a day in hours). From a month up the bars are Central
+ * CALENDAR days, or weeks of them, because "Tuesday" is how a person reads a
+ * day and a rolling 24 hours ending at 3:40 PM is not.
+ */
+function activity(a: Analytics, range: Range): { bars: Bucket[]; from: string; to: string; unit: string } {
+  const now = a.now;
+  const sliceFor: Record<string, [number, string]> = {
+    "1h": [5 * MINUTE, "5 minutes"],
+    "3h": [15 * MINUTE, "15 minutes"],
+    "6h": [15 * MINUTE, "15 minutes"],
+    "12h": [30 * MINUTE, "30 minutes"],
+    "24h": [HOUR, "hour"],
+    "3d": [HOUR, "hour"],
+    "7d": [6 * HOUR, "6 hours"],
+  };
+  const slice = sliceFor[range.id];
+  if (slice && range.ms !== null) {
+    const [step, unit] = slice;
+    const count = Math.round(range.ms / step);
+    const bars: Bucket[] = Array.from({ length: count }, (_, i) => {
+      const start = now - (count - i) * step;
+      return { n: 0, label: step >= HOUR ? formatCentralHour(start) : formatCentral(start) };
+    });
+    for (const t of a.times) {
+      const k = count - 1 - Math.floor((now - t) / step);
+      if (k >= 0 && k < count) bars[k].n++;
+    }
+    for (const b of bars) b.label = `${b.label} — ${b.n} ${b.n === 1 ? "lookup" : "lookups"}`;
+    return { bars, from: formatCentral(now - range.ms), to: "now", unit };
+  }
+
+  // Calendar days, Central. Stepping twelve hours and de-duplicating can never
+  // skip a day, even across the two daylight-saving changes.
+  const start = range.ms !== null ? now - range.ms : a.firstAt ? Date.parse(a.firstAt) : now;
+  const days: string[] = [];
+  for (let t = start; t <= now + HOUR; t += 12 * HOUR) {
+    const d = centralParts(Math.min(t, now)).day;
+    if (days[days.length - 1] !== d) days.push(d);
+  }
+  const perDay = new Map(a.byDay.map((d) => [d.day, d.n]));
+  if (days.length <= 120) {
+    const bars = days.map((d) => {
+      const n = perDay.get(d) ?? 0;
+      return { n, label: `${formatDate(d)} — ${n} ${n === 1 ? "lookup" : "lookups"}` };
+    });
+    return { bars, from: formatDate(days[0]), to: formatDate(days[days.length - 1]), unit: "day" };
+  }
+  const bars: Bucket[] = [];
+  for (let i = 0; i < days.length; i += 7) {
+    const week = days.slice(i, i + 7);
+    const n = week.reduce((sum, d) => sum + (perDay.get(d) ?? 0), 0);
+    bars.push({
+      n,
+      label: `Week of ${formatDate(week[0])} — ${n} ${n === 1 ? "lookup" : "lookups"}`,
+    });
+  }
+  return { bars, from: formatDate(days[0]), to: formatDate(days[days.length - 1]), unit: "week" };
+}
+
 export default async function InsightsPage({
   searchParams,
 }: {
@@ -209,7 +288,32 @@ export default async function InsightsPage({
     notFound();
   }
 
-  const [a, counties] = await Promise.all([readAnalytics(), readAllCounties()]);
+  const key = given as string;
+  const range = rangeFor(typeof searchParams.range === "string" ? searchParams.range : undefined);
+  const [a, counties] = await Promise.all([readAnalytics(range.ms), readAllCounties()]);
+  const span = range.ms === null ? "all time" : `the last ${range.label}`;
+
+  /*
+    The window picker. Plain links, so it needs no client JavaScript: choosing a
+    window reloads the page with ?range= set. The key is carried in each link
+    because the page 404s without it. /insights is served with
+    Referrer-Policy: no-referrer, so these links do not leak it anywhere.
+  */
+  const rangeBar = (
+    <nav className={s.rangeBar} aria-label="Time window">
+      <span className={s.rangeL}>Show</span>
+      {RANGES.map((r) => (
+        <a
+          key={r.id}
+          href={`/insights?key=${encodeURIComponent(key)}&range=${r.id}`}
+          className={r.id === range.id ? s.rangeOn : undefined}
+          aria-current={r.id === range.id ? "page" : undefined}
+        >
+          {r.label}
+        </a>
+      ))}
+    </nav>
+  );
 
   if (a.error) {
     return (
@@ -248,26 +352,20 @@ export default async function InsightsPage({
   const top5 = a.byCounty.slice(0, 5).reduce((sum, c) => sum + c.lookups, 0);
   const countiesUntouched = 254 - a.byCounty.length;
 
-  const today = new Date();
-  const byDayMap = new Map(a.byDay.map((d) => [d.day, d.n]));
-  const strip: Array<{ day: string; n: number }> = [];
-  for (let i = STRIP_DAYS - 1; i >= 0; i--) {
-    const d = new Date(today.getTime() - i * 86_400_000).toISOString().slice(0, 10);
-    strip.push({ day: d, n: byDayMap.get(d) ?? 0 });
-  }
-  const stripMax = Math.max(1, ...strip.map((d) => d.n));
+  const act = activity(a, range);
+  const actMax = Math.max(1, ...act.bars.map((b) => b.n));
 
   /*
-    Is the new-versus-returning split old enough to mean anything?
+    Can the new-versus-returning split mean anything for this window?
 
-    For the first RECENT_DAYS after visitor codes shipped, everyone is
-    necessarily new — there is no earlier record for anyone to be returning
-    from. Showing "100% new" then would be a fact about the calendar dressed up
-    as a finding, so it is labelled instead of drawn.
+    Only if the window starts AFTER recording began. Otherwise there is no
+    earlier record for anyone to be returning from, so everyone is new by
+    definition — "100% new" would be a fact about the calendar dressed up as a
+    finding, so it is labelled instead.
   */
-  const trackingAge = a.firstAt ? (Date.now() - Date.parse(a.firstAt)) / 86_400_000 : 0;
-  const splitIsMeaningful = trackingAge >= RECENT_DAYS;
-  const active30 = a.newVisitors + a.returningVisitors;
+  const firstMs = a.firstAt ? Date.parse(a.firstAt) : null;
+  const splitIsMeaningful = a.windowFrom !== null && firstMs !== null && a.windowFrom > firstMs;
+  const active = a.newVisitors + a.returningVisitors;
 
   return (
     <main className={s.page}>
@@ -275,9 +373,12 @@ export default async function InsightsPage({
         <h1>Visitor insights</h1>
         <p className={s.sub}>
           Texas Weather Explorer — private.{" "}
-          {a.firstAt ? `Recording since ${formatDate(a.firstAt)}.` : "Nothing recorded yet."}
+          {a.firstAt ? `Recording since ${formatCentral(a.firstAt)}.` : "Nothing recorded yet."}{" "}
+          All dates and times are Texas Central time.
         </p>
       </header>
+
+      {rangeBar}
 
       {a.warnings.map((w) => (
         <div key={w} className={s.problem}>
@@ -285,7 +386,16 @@ export default async function InsightsPage({
         </div>
       ))}
 
-      {a.lookups === 0 && (
+      {a.lookups === 0 && a.firstAt !== null && (
+        <div className={s.problem}>
+          <h2>Nobody in {span}</h2>
+          <p>
+            No lookups were recorded in this window. Pick a longer one above.
+          </p>
+        </div>
+      )}
+
+      {a.lookups === 0 && a.firstAt === null && (
         <div className={s.problem}>
           <h2>The log is empty</h2>
           <p>
@@ -302,7 +412,7 @@ export default async function InsightsPage({
         <div className={s.stat}>
           <span className={s.statN}>{a.visitors.toLocaleString()}</span>
           <span className={s.statL}>people</span>
-          <span className={s.statF}>distinct browsers, all time</span>
+          <span className={s.statF}>distinct browsers, {span}</span>
         </div>
         <div className={s.stat}>
           <span className={s.statN}>{a.lookups.toLocaleString()}</span>
@@ -310,14 +420,19 @@ export default async function InsightsPage({
           <span className={s.statF}>{a.sessions.toLocaleString()} separate sittings</span>
         </div>
         <div className={s.stat}>
-          <span className={s.statN}>{a.visitors7.toLocaleString()}</span>
-          <span className={s.statL}>people, last 7 days</span>
-          <span className={s.statF}>{a.lookups7.toLocaleString()} lookups</span>
+          <span className={s.statN}>{splitIsMeaningful ? a.newVisitors.toLocaleString() : "—"}</span>
+          <span className={s.statL}>first-time visitors</span>
+          <span className={s.statF}>
+            {splitIsMeaningful
+              ? `${a.returningVisitors.toLocaleString()} came back`
+              : "needs a shorter window"}
+          </span>
         </div>
         <div className={s.stat}>
-          <span className={s.statN}>{a.visitors30.toLocaleString()}</span>
-          <span className={s.statL}>people, last 30 days</span>
-          <span className={s.statF}>{a.lookups30.toLocaleString()} lookups</span>
+          <span className={s.statN} style={{ fontSize: "1rem", lineHeight: 1.3 }}>
+            {a.lastAt ? formatCentral(a.lastAt) : "—"}
+          </span>
+          <span className={s.statL}>latest lookup</span>
         </div>
         <div className={s.stat}>
           <span className={s.statN}>{a.byCounty.length}</span>
@@ -334,17 +449,18 @@ export default async function InsightsPage({
       {/* ---- new vs returning ---- */}
       <section className={s.card}>
         <div className={s.cardHead}>
-          <h2>New and returning, last {RECENT_DAYS} days</h2>
+          <h2>New and returning, {span}</h2>
           {!splitIsMeaningful && (
             <p className={s.note}>
-              <strong>Too early to read.</strong> Visitor codes have only been
-              running {`${Math.floor(trackingAge)} day${Math.floor(trackingAge) === 1 ? "" : "s"}`},
-              so nobody <em>can</em> be returning from before that. This becomes
-              meaningful once there is more than {RECENT_DAYS} days of history.
+              <strong>Not readable for this window.</strong> It reaches back to
+              when recording began
+              {a.firstAt ? ` (${formatCentral(a.firstAt)})` : ""}, so nobody{" "}
+              <em>can</em> be returning from before it and everyone shows as new.
+              Pick a shorter window above to see who came back.
             </p>
           )}
         </div>
-        {active30 > 0 ? (
+        {active > 0 && splitIsMeaningful ? (
           <>
             <div className={s.split}>
               <div
@@ -361,17 +477,17 @@ export default async function InsightsPage({
             <div className={s.splitKey}>
               <span>
                 <i className={s.swNew} /> {a.newVisitors.toLocaleString()} first time here (
-                {pct(a.newVisitors, active30)})
+                {pct(a.newVisitors, active)})
               </span>
               <span>
                 <i className={s.swOld} /> {a.returningVisitors.toLocaleString()} came back (
-                {pct(a.returningVisitors, active30)})
+                {pct(a.returningVisitors, active)})
               </span>
             </div>
           </>
-        ) : (
-          <p className={s.note}>No visitors in the last {RECENT_DAYS} days.</p>
-        )}
+        ) : active === 0 ? (
+          <p className={s.note}>No identified visitors in {span}.</p>
+        ) : null}
 
         <div className={s.two}>
           <div>
@@ -390,7 +506,7 @@ export default async function InsightsPage({
         <div className={s.cardHead}>
           <h2>Where people looked</h2>
           <p className={s.note}>
-            {texasLookups.toLocaleString()} lookups inside Texas, shaded by county.
+            {texasLookups.toLocaleString()} lookups inside Texas in {span}, shaded by county.
           </p>
         </div>
 
@@ -471,7 +587,7 @@ export default async function InsightsPage({
                     <td className={s.num}>{c.lookups.toLocaleString()}</td>
                     <td className={s.num}>{c.visitors.toLocaleString()}</td>
                     <td className={s.num}>{pct(c.lookups, texasLookups)}</td>
-                    <td>{formatDate(c.lastAt)}</td>
+                    <td>{formatCentral(c.lastAt)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -483,22 +599,25 @@ export default async function InsightsPage({
       {/* ---- over time ---- */}
       <section className={s.card}>
         <div className={s.cardHead}>
-          <h2>Activity, last {STRIP_DAYS} days</h2>
+          <h2>Activity, {span}</h2>
+          <p className={s.note}>One bar per {act.unit}. Hover a bar for its count.</p>
         </div>
         <div className={s.strip}>
-          {strip.map((d) => (
+          {act.bars.map((b, i) => (
             <span
-              key={d.day}
+              key={i}
               className={s.bar}
-              style={{ height: `${Math.max(2, (d.n / stripMax) * 100)}%` }}
-              title={`${formatDate(d.day)} — ${d.n} ${d.n === 1 ? "lookup" : "lookups"}`}
+              style={{ height: `${Math.max(2, (b.n / actMax) * 100)}%` }}
+              title={b.label}
             />
           ))}
         </div>
         <div className={s.stripAxis}>
-          <span>{formatDate(strip[0].day)}</span>
-          <span>peak {stripMax}/day</span>
-          <span>{formatDate(strip[strip.length - 1].day)}</span>
+          <span>{act.from}</span>
+          <span>
+            peak {actMax} per {act.unit}
+          </span>
+          <span>{act.to}</span>
         </div>
 
         {a.byMonth.length > 1 && (
@@ -529,8 +648,8 @@ export default async function InsightsPage({
         <div className={s.cardHead}>
           <h2>When they look</h2>
           <p className={s.note}>
-            The visitor&apos;s own clock, not the server&apos;s — Texas spans two
-            time zones, so UTC would put El Paso&apos;s morning in the wrong place.
+            Texas Central time, {span}. El Paso runs an hour behind, so its
+            visits show an hour later than its own clocks read.
           </p>
         </div>
         <h3 className={s.h3}>Hour of day</h3>
@@ -641,7 +760,7 @@ export default async function InsightsPage({
             source, variable or panel at one spot does not add a lookup.
           </li>
           <li>
-            <strong>{a.selfLookups.toLocaleString()} lookups</strong> came from
+            <strong>{a.selfLookups.toLocaleString()} lookups</strong> in {span} came from
             browsers marked with <code>?notme=1</code> and are excluded from
             every figure above. They are kept rather than dropped so the
             exclusion can be seen to be working — if that number is zero and you
