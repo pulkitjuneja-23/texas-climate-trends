@@ -286,6 +286,12 @@ export default function ClimateChart(props: Props) {
   const isMonthlySource = isWaterField;
 
   const [showTable, setShowTable] = useState(false);
+  /**
+   * The current year is drawn by default but can be switched off like any
+   * other, so a figure of past seasons alone (say, last year against normal)
+   * can be exported without an unfinished line running across it.
+   */
+  const [showCurrent, setShowCurrent] = useState(true);
 
   const varDef = VARIABLES.find((v) => v.field === field) ?? VARIABLES[0];
 
@@ -359,7 +365,9 @@ export default function ClimateChart(props: Props) {
     const bandLastYear = bandYears.length ? bandYears[bandYears.length - 1].year : null;
 
     const byYear = new Map(series.map((s) => [s.year, s]));
-    const shown = [currentYear, ...compareYears].filter((y) => byYear.has(y));
+    const shown = [...(showCurrent ? [currentYear] : []), ...compareYears].filter((y) =>
+      byYear.has(y)
+    );
 
     const curves = new Map<number, (number | null)[]>();
     for (const y of shown) {
@@ -411,7 +419,7 @@ export default function ClimateChart(props: Props) {
       bandFirstYear,
       bandLastYear,
     };
-  }, [records, field, effectiveMode, compareYears, currentYear, units, gddConfig, smoothing, quantity, startIdx, endIdx]);
+  }, [records, field, effectiveMode, compareYears, currentYear, showCurrent, units, gddConfig, smoothing, quantity, startIdx, endIdx]);
 
   /**
    * Month starts, but only the ones inside the window.
@@ -474,9 +482,19 @@ export default function ClimateChart(props: Props) {
 
   const lastObservedKey = lastObserved ? lastObserved.slice(5, 10) : null;
 
-  function colorFor(year: number, idx: number): string {
-    if (year === currentYear) return `var(${CURRENT_VAR})`;
-    return `var(${SERIES_VARS[(idx - 1) % SERIES_VARS.length]})`;
+  /**
+   * A year's colour comes from its place among the CHOSEN past years, never
+   * its place among the lines drawn. Otherwise switching the current year off
+   * would shift every other line to the next colour, and the chips would stop
+   * matching the chart.
+   */
+  function colorVar(year: number): string {
+    if (year === currentYear) return CURRENT_VAR;
+    return SERIES_VARS[Math.max(0, compareYears.indexOf(year)) % SERIES_VARS.length];
+  }
+
+  function colorFor(year: number): string {
+    return `var(${colorVar(year)})`;
   }
 
   /**
@@ -549,9 +567,9 @@ export default function ClimateChart(props: Props) {
           { label: "Average", varName: "--text-muted", kind: "dash" as const },
           // Same colour assignment as `colorFor`, so the legend cannot drift
           // from the lines it describes.
-          ...seriesYears.map((y, i) => ({
+          ...seriesYears.map((y) => ({
             label: String(y),
-            varName: y === currentYear ? CURRENT_VAR : SERIES_VARS[(i - 1) % SERIES_VARS.length],
+            varName: colorVar(y),
             kind: "line" as const,
           })),
         ],
@@ -575,7 +593,7 @@ export default function ClimateChart(props: Props) {
   }
 
   /** Draws a series name at its last real point — the contrast relief. */
-  function endLabel(seriesKey: string, year: number, idx: number) {
+  function endLabel(seriesKey: string, year: number) {
     let lastIdx = -1;
     for (let i = rows.length - 1; i >= 0; i--) {
       const v = rows[i][seriesKey];
@@ -598,7 +616,7 @@ export default function ClimateChart(props: Props) {
             textAnchor="start"
             fontSize={11}
             fontWeight={700}
-            fill={colorFor(year, idx)}
+            fill={colorFor(year)}
             style={{ paintOrder: "stroke", stroke: "var(--surface)", strokeWidth: 3 }}
           >
             {year}
@@ -794,22 +812,35 @@ export default function ClimateChart(props: Props) {
           )}
         </label>
         <div className="chip-row">
+          {availableYears.includes(currentYear) && (
+            <button
+              key={currentYear}
+              className="chip"
+              aria-pressed={showCurrent}
+              onClick={() => setShowCurrent((v) => !v)}
+              style={showCurrent ? { color: colorFor(currentYear) } : undefined}
+            >
+              {showCurrent && (
+                <span className="swatch" style={{ background: colorFor(currentYear) }} />
+              )}
+              {currentYear}
+            </button>
+          )}
           {availableYears
             .filter((y) => y !== currentYear)
             .slice()
             .reverse()
             .map((y) => {
               const on = compareYears.includes(y);
-              const idx = compareYears.indexOf(y) + 1;
               return (
                 <button
                   key={y}
                   className="chip"
                   aria-pressed={on}
                   onClick={() => toggleYear(y)}
-                  style={on ? { color: colorFor(y, idx) } : undefined}
+                  style={on ? { color: colorFor(y) } : undefined}
                 >
-                  {on && <span className="swatch" style={{ background: colorFor(y, idx) }} />}
+                  {on && <span className="swatch" style={{ background: colorFor(y) }} />}
                   {y}
                 </button>
               );
@@ -833,6 +864,7 @@ export default function ClimateChart(props: Props) {
       )}
 
       {isWaterField &&
+        showCurrent &&
         waterStatus?.available &&
         (waterStatus.missingMonths?.length ?? 0) > 0 && (
           <div className="small" style={{ marginBottom: 10, color: "var(--text-secondary)" }}>
@@ -925,7 +957,9 @@ export default function ClimateChart(props: Props) {
               activeDot={false}
             />
 
-            {lastObservedKey && (
+            {/* Marks where this year's data ends, so it belongs to this
+                year's line: hidden with it. */}
+            {lastObservedKey && showCurrent && (
               <ReferenceLine
                 x={lastObservedKey}
                 stroke="var(--text-muted)"
@@ -934,17 +968,17 @@ export default function ClimateChart(props: Props) {
               />
             )}
 
-            {seriesYears.map((y, i) => (
+            {seriesYears.map((y) => (
               <Line
                 key={y}
                 dataKey={`y${y}`}
-                stroke={colorFor(y, i)}
+                stroke={colorFor(y)}
                 strokeWidth={y === currentYear ? 2.5 : 2}
                 dot={false}
                 connectNulls={false}
                 isAnimationActive={false}
                 activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--surface)" }}
-                label={endLabel(`y${y}`, y, i)}
+                label={endLabel(`y${y}`, y)}
               />
             ))}
 
@@ -958,13 +992,13 @@ export default function ClimateChart(props: Props) {
                 return (
                   <div className="tt">
                     <div className="tt-h">{row.label}</div>
-                    {seriesYears.map((y, i) => {
+                    {seriesYears.map((y) => {
                       const v = row[`y${y}`];
                       if (typeof v !== "number") return null;
                       return (
                         <div className="tt-row" key={y}>
                           <span className="lbl">
-                            <span className="swatch" style={{ background: colorFor(y, i) }} />
+                            <span className="swatch" style={{ background: colorFor(y) }} />
                             {y}
                           </span>
                           <span className="val">
@@ -1013,7 +1047,9 @@ export default function ClimateChart(props: Props) {
           Middle 50% of years
         </span>
         <span className="small muted">— — Normal (mean)</span>
-        {lastObservedKey && <span className="small muted">┆ Last observed day</span>}
+        {lastObservedKey && showCurrent && (
+          <span className="small muted">┆ Last observed day</span>
+        )}
         {isWaterField && bandYearCount > 0 && (
           <span className="small muted">
             · Normal from {bandYearCount} year{bandYearCount === 1 ? "" : "s"} ({bandFirstYear}–
