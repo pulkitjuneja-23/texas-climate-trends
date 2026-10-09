@@ -559,6 +559,14 @@ button:disabled {
   font-weight: 600;
 }
 
+/* Legend entries that switch a chart layer on and off. Struck through and
+   faded when off, so the legend still names the layer and says it is hidden
+   rather than silently dropping it. */
+.legend-chip[aria-pressed="false"] {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+
 .swatch {
   width: 10px;
   height: 10px;

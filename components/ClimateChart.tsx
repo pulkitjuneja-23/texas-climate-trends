@@ -292,6 +292,15 @@ export default function ClimateChart(props: Props) {
    * can be exported without an unfinished line running across it.
    */
   const [showCurrent, setShowCurrent] = useState(true);
+  /**
+   * The context layers can be switched off too, from their own legend entries,
+   * for a figure that needs only the lines. On by default: the band and the
+   * average are what make a single year readable, so hiding them is a choice
+   * for an export, not the way the chart should first appear.
+   */
+  const [showBand, setShowBand] = useState(true);
+  const [showNormal, setShowNormal] = useState(true);
+  const [showLastDay, setShowLastDay] = useState(true);
 
   const varDef = VARIABLES.find((v) => v.field === field) ?? VARIABLES[0];
 
@@ -522,7 +531,9 @@ export default function ClimateChart(props: Props) {
         // The percentile columns were dropped at the user's request: they made
         // the file wide and are trivially recomputed from the raw record by
         // anyone who wants them.
-        { header: `long_term_average_${unit}`, value: (r) => fmt(r.normal) },
+        ...(showNormal
+          ? [{ header: `long_term_average_${unit}`, value: (r: Row) => fmt(r.normal) }]
+          : []),
         ...seriesYears.map((y) => ({
           header: String(y),
           value: (r: Row) => fmt(r[`y${y}`] as number | null | undefined),
@@ -563,8 +574,12 @@ export default function ClimateChart(props: Props) {
         // bands are the context that makes a single year readable, so a figure
         // without them explained is not self-contained.
         legend: [
-          { label: "Middle 50% of years", varName: "--band-inner", kind: "band" as const },
-          { label: "Average", varName: "--text-muted", kind: "dash" as const },
+          ...(showBand
+            ? [{ label: "Middle 50% of years", varName: "--band-inner", kind: "band" as const }]
+            : []),
+          ...(showNormal
+            ? [{ label: "Average", varName: "--text-muted", kind: "dash" as const }]
+            : []),
           // Same colour assignment as `colorFor`, so the legend cannot drift
           // from the lines it describes.
           ...seriesYears.map((y) => ({
@@ -938,28 +953,32 @@ export default function ClimateChart(props: Props) {
               The label is now "Middle 50% of years" rather than "middle half"
               — same statistic, stated as one.
             */}
-            <Area
-              dataKey="band50"
-              stroke="none"
-              fill="var(--band-inner)"
-              fillOpacity={1}
-              isAnimationActive={false}
-              activeDot={false}
-              legendType="none"
-            />
-            <Line
-              dataKey="normal"
-              stroke="var(--normal-line)"
-              strokeWidth={1.5}
-              strokeDasharray="4 3"
-              dot={false}
-              isAnimationActive={false}
-              activeDot={false}
-            />
+            {showBand && (
+              <Area
+                dataKey="band50"
+                stroke="none"
+                fill="var(--band-inner)"
+                fillOpacity={1}
+                isAnimationActive={false}
+                activeDot={false}
+                legendType="none"
+              />
+            )}
+            {showNormal && (
+              <Line
+                dataKey="normal"
+                stroke="var(--normal-line)"
+                strokeWidth={1.5}
+                strokeDasharray="4 3"
+                dot={false}
+                isAnimationActive={false}
+                activeDot={false}
+              />
+            )}
 
             {/* Marks where this year's data ends, so it belongs to this
                 year's line: hidden with it. */}
-            {lastObservedKey && showCurrent && (
+            {lastObservedKey && showCurrent && showLastDay && (
               <ReferenceLine
                 x={lastObservedKey}
                 stroke="var(--text-muted)"
@@ -1007,16 +1026,18 @@ export default function ClimateChart(props: Props) {
                         </div>
                       );
                     })}
-                    <div
-                      className="tt-row"
-                      style={{ borderTop: "1px solid var(--gridline)", marginTop: 5, paddingTop: 5 }}
-                    >
-                      <span className="lbl">Normal</span>
-                      <span className="val">
-                        {typeof row.normal === "number" ? row.normal.toFixed(dp) : "—"} {unit}
-                      </span>
-                    </div>
-                    {row.band50 && (
+                    {showNormal && (
+                      <div
+                        className="tt-row"
+                        style={{ borderTop: "1px solid var(--gridline)", marginTop: 5, paddingTop: 5 }}
+                      >
+                        <span className="lbl">Normal</span>
+                        <span className="val">
+                          {typeof row.normal === "number" ? row.normal.toFixed(dp) : "—"} {unit}
+                        </span>
+                      </div>
+                    )}
+                    {showBand && row.band50 && (
                       <div className="tt-row">
                         <span className="lbl">Middle 50% of years</span>
                         <span className="val">
@@ -1038,17 +1059,38 @@ export default function ClimateChart(props: Props) {
         </div>
       )}
 
+      {/* The legend doubles as the switch for each layer, the same way the
+          year chips do: pressed means drawn. */}
       <div className="chip-row" style={{ marginTop: 10, alignItems: "center" }}>
-        <span className="small muted">
-          <span
-            className="swatch"
-            style={{ background: "var(--band-inner)", display: "inline-block", marginRight: 5 }}
-          />
+        <button
+          type="button"
+          className="chip legend-chip"
+          aria-pressed={showBand}
+          onClick={() => setShowBand((v) => !v)}
+          title={showBand ? "Hide the band" : "Show the band"}
+        >
+          <span className="swatch" style={{ background: "var(--band-inner)" }} />
           Middle 50% of years
-        </span>
-        <span className="small muted">— — Normal (mean)</span>
+        </button>
+        <button
+          type="button"
+          className="chip legend-chip"
+          aria-pressed={showNormal}
+          onClick={() => setShowNormal((v) => !v)}
+          title={showNormal ? "Hide the average" : "Show the average"}
+        >
+          — — Normal (mean)
+        </button>
         {lastObservedKey && showCurrent && (
-          <span className="small muted">┆ Last observed day</span>
+          <button
+            type="button"
+            className="chip legend-chip"
+            aria-pressed={showLastDay}
+            onClick={() => setShowLastDay((v) => !v)}
+            title={showLastDay ? "Hide the marker" : "Show the marker"}
+          >
+            ┆ Last observed day
+          </button>
         )}
         {isWaterField && bandYearCount > 0 && (
           <span className="small muted">
